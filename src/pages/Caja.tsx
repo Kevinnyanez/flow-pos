@@ -1,6 +1,6 @@
 import { usePOS } from '@/contexts/POSContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DollarSign, TrendingUp, ShoppingCart, Calendar } from 'lucide-react';
+import { DollarSign, TrendingUp, ShoppingCart, Calendar, CreditCard } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -27,6 +27,17 @@ export default function Caja() {
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
   const totalTransactions = sales.length;
   const averageSale = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+
+  // Desglose por método de pago
+  const cashRevenue = todaySales
+    .filter((sale) => sale.paymentMethod === 'efectivo')
+    .reduce((sum, sale) => sum + sale.total, 0);
+  const debitRevenue = todaySales
+    .filter((sale) => sale.paymentMethod === 'debito')
+    .reduce((sum, sale) => sum + sale.total, 0);
+  const creditRevenue = todaySales
+    .filter((sale) => sale.paymentMethod === 'credito')
+    .reduce((sum, sale) => sum + sale.total, 0);
 
   const stats = [
     {
@@ -97,6 +108,46 @@ export default function Caja() {
 
       <Card className="border-border/50 shadow-md">
         <CardHeader>
+          <CardTitle>Desglose por Método de Pago (Hoy)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-border p-4 bg-muted/30">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-muted-foreground">Efectivo</span>
+                <DollarSign className="h-4 w-4 text-success" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">${cashRevenue.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {todaySales.filter((s) => s.paymentMethod === 'efectivo').length} ventas
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-4 bg-muted/30">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-muted-foreground">Débito</span>
+                <DollarSign className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">${debitRevenue.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {todaySales.filter((s) => s.paymentMethod === 'debito').length} ventas
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-4 bg-muted/30">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-muted-foreground">Crédito</span>
+                <DollarSign className="h-4 w-4 text-accent" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">${creditRevenue.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {todaySales.filter((s) => s.paymentMethod === 'credito').length} ventas
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50 shadow-md">
+        <CardHeader>
           <CardTitle>Historial de Caja</CardTitle>
         </CardHeader>
         <CardContent>
@@ -107,13 +158,14 @@ export default function Caja() {
                   <TableHead className="font-semibold">Fecha</TableHead>
                   <TableHead className="font-semibold">Productos</TableHead>
                   <TableHead className="font-semibold">Total</TableHead>
+                  <TableHead className="font-semibold">Método</TableHead>
                   <TableHead className="font-semibold">Usuario</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                       No hay ventas registradas
                     </TableCell>
                   </TableRow>
@@ -145,6 +197,18 @@ export default function Caja() {
                           <span className="text-lg font-semibold text-success">
                             ${sale.total.toFixed(2)}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-4 w-4 text-muted-foreground" />
+                            <span className="capitalize text-sm">
+                              {sale.paymentMethod === 'efectivo'
+                                ? 'Efectivo'
+                                : sale.paymentMethod === 'debito'
+                                ? 'Débito'
+                                : 'Crédito'}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {currentUser?.id === sale.userId ? 'Yo' : `Usuario ${sale.userId}`}
