@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { usePOS, CustomerAccount } from '@/contexts/POSContext';
+import { usePOS, CustomerAccount, Payment } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Sheet,
   SheetContent,
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Trash2, Users } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Users, DollarSign, History, CheckCircle } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -26,7 +27,8 @@ import {
 import { toast } from 'sonner';
 
 export default function CuentasCorrientes() {
-  const { customerAccounts, addCustomerAccount, updateCustomerAccount, deleteCustomerAccount } = usePOS();
+  const { customerAccounts, addCustomerAccount, updateCustomerAccount, deleteCustomerAccount, addPaymentToAccount } =
+    usePOS();
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CustomerAccount | null>(null);
@@ -34,6 +36,15 @@ export default function CuentasCorrientes() {
     name: '',
     status: 'al-dia' as CustomerAccount['status'],
     debt: '0',
+  });
+
+  // Estado para modal de pagos
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<CustomerAccount | null>(null);
+  const [paymentData, setPaymentData] = useState({
+    type: 'abono' as Payment['type'],
+    amount: '',
+    description: '',
   });
 
   const filteredAccounts = customerAccounts.filter((a) =>
@@ -55,6 +66,7 @@ export default function CuentasCorrientes() {
         status: formData.status,
         debt: parseFloat(formData.debt),
         sales: [],
+        payments: [],
       });
       toast.success('Cuenta creada correctamente');
     }
@@ -80,6 +92,49 @@ export default function CuentasCorrientes() {
     setIsOpen(false);
     setEditingAccount(null);
     setFormData({ name: '', status: 'al-dia', debt: '0' });
+  };
+
+  const handleOpenPayment = (account: CustomerAccount) => {
+    setSelectedAccount(account);
+    setIsPaymentOpen(true);
+  };
+
+  const handleClosePayment = () => {
+    setIsPaymentOpen(false);
+    setSelectedAccount(null);
+    setPaymentData({ type: 'abono', amount: '', description: '' });
+  };
+
+  const handlePaymentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccount) return;
+
+    const amount = parseFloat(paymentData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Ingresa un monto válido');
+      return;
+    }
+
+    if (paymentData.type === 'abono' && amount > selectedAccount.debt) {
+      toast.error('El abono no puede ser mayor a la deuda');
+      return;
+    }
+
+    addPaymentToAccount(selectedAccount.id, {
+      date: new Date(),
+      amount,
+      type: paymentData.type,
+      description: paymentData.description || undefined,
+    });
+
+    const typeLabels = {
+      deuda: 'Deuda registrada',
+      abono: 'Abono registrado',
+      saldo: 'Deuda saldada',
+    };
+
+    toast.success(typeLabels[paymentData.type]);
+    handleClosePayment();
   };
 
   const getStatusBadge = (status: CustomerAccount['status']) => {
@@ -226,6 +281,15 @@ export default function CuentasCorrientes() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => handleOpenPayment(account)}
+                          className="rounded-lg"
+                          title="Gestionar pagos"
+                        >
+                          <DollarSign className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => handleEdit(account)}
                           className="rounded-lg"
                         >
@@ -255,6 +319,170 @@ export default function CuentasCorrientes() {
           </div>
         )}
       </Card>
+
+      {/* Modal de Pagos */}
+      <Sheet open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
+        <SheetContent className="sm:max-w-2xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Gestionar Cuenta - {selectedAccount?.name}</SheetTitle>
+            <SheetDescription>
+              Deuda actual: ${selectedAccount?.debt.toFixed(2)}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-6">
+            {/* Formulario de pago */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Registrar Movimiento</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePaymentSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentType">Tipo de Movimiento</Label>
+                    <Select
+                      value={paymentData.type}
+                      onValueChange={(value: Payment['type']) =>
+                        setPaymentData({ ...paymentData, type: value })
+                      }
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="deuda">Nueva Deuda</SelectItem>
+                        <SelectItem value="abono">Abono</SelectItem>
+                        <SelectItem value="saldo">Saldar Completamente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {paymentData.type !== 'saldo' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="amount">Monto</Label>
+                      <Input
+                        id="amount"
+                        type="number"
+                        step="0.01"
+                        value={paymentData.amount}
+                        onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                        required
+                        className="rounded-xl"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Descripción (opcional)</Label>
+                    <Textarea
+                      id="description"
+                      value={paymentData.description}
+                      onChange={(e) => setPaymentData({ ...paymentData, description: e.target.value })}
+                      className="rounded-xl"
+                      placeholder="Notas sobre este movimiento..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <Button type="submit" className="flex-1 rounded-xl">
+                      Registrar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleClosePayment}
+                      className="flex-1 rounded-xl"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+
+            {/* Historial de pagos */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Historial de Movimientos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selectedAccount?.payments.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    No hay movimientos registrados
+                  </p>
+                ) : (
+                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                    {selectedAccount?.payments
+                      .slice()
+                      .reverse()
+                      .map((payment) => (
+                        <div
+                          key={payment.id}
+                          className="flex items-start gap-3 rounded-lg border border-border p-3"
+                        >
+                          <div
+                            className={`rounded-lg p-2 ${
+                              payment.type === 'deuda'
+                                ? 'bg-destructive/10'
+                                : payment.type === 'abono'
+                                ? 'bg-primary/10'
+                                : 'bg-success/10'
+                            }`}
+                          >
+                            {payment.type === 'deuda' ? (
+                              <DollarSign className="h-4 w-4 text-destructive" />
+                            ) : payment.type === 'abono' ? (
+                              <DollarSign className="h-4 w-4 text-primary" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4 text-success" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium text-sm">
+                                {payment.type === 'deuda'
+                                  ? 'Nueva Deuda'
+                                  : payment.type === 'abono'
+                                  ? 'Abono'
+                                  : 'Saldo Completo'}
+                              </p>
+                              <span
+                                className={`font-semibold ${
+                                  payment.type === 'deuda'
+                                    ? 'text-destructive'
+                                    : 'text-success'
+                                }`}
+                              >
+                                {payment.type === 'deuda' ? '+' : '-'}${payment.amount.toFixed(2)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(payment.date).toLocaleString('es-AR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                            {payment.description && (
+                              <p className="text-sm text-muted-foreground mt-1">{payment.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

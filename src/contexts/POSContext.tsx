@@ -16,6 +16,8 @@ export interface Product {
   stock: number;
 }
 
+export type PaymentMethod = 'efectivo' | 'debito' | 'credito';
+
 export interface Sale {
   id: string;
   date: Date;
@@ -23,6 +25,15 @@ export interface Sale {
   total: number;
   userId: string;
   customerAccountId?: string;
+  paymentMethod: PaymentMethod;
+}
+
+export interface Payment {
+  id: string;
+  date: Date;
+  amount: number;
+  type: 'deuda' | 'abono' | 'saldo';
+  description?: string;
 }
 
 export interface CustomerAccount {
@@ -32,6 +43,7 @@ export interface CustomerAccount {
   debt: number;
   lastPaymentDate?: Date;
   sales: string[];
+  payments: Payment[];
 }
 
 export interface CashRegister {
@@ -61,6 +73,7 @@ interface POSContextType {
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
   deleteCustomerAccount: (id: string) => void;
+  addPaymentToAccount: (accountId: string, payment: Omit<Payment, 'id'>) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -84,6 +97,7 @@ const initialCustomerAccounts: CustomerAccount[] = [
     debt: 0,
     lastPaymentDate: new Date('2025-11-10'),
     sales: [],
+    payments: [],
   },
   {
     id: '2',
@@ -92,6 +106,15 @@ const initialCustomerAccounts: CustomerAccount[] = [
     debt: 450,
     lastPaymentDate: new Date('2025-10-15'),
     sales: [],
+    payments: [
+      {
+        id: '1',
+        date: new Date('2025-10-15'),
+        amount: 450,
+        type: 'deuda',
+        description: 'Deuda inicial',
+      },
+    ],
   },
   {
     id: '3',
@@ -100,6 +123,15 @@ const initialCustomerAccounts: CustomerAccount[] = [
     debt: 120,
     lastPaymentDate: new Date('2025-11-01'),
     sales: [],
+    payments: [
+      {
+        id: '2',
+        date: new Date('2025-11-01'),
+        amount: 120,
+        type: 'deuda',
+        description: 'Deuda inicial',
+      },
+    ],
   },
 ];
 
@@ -146,6 +178,44 @@ export function POSProvider({ children }: { children: ReactNode }) {
     setCustomerAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
+  const addPaymentToAccount = (accountId: string, payment: Omit<Payment, 'id'>) => {
+    const newPayment = { ...payment, id: Date.now().toString() };
+    setCustomerAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id === accountId) {
+          const updatedPayments = [...account.payments, newPayment];
+          let newDebt = account.debt;
+          let newStatus = account.status;
+
+          // Actualizar deuda según el tipo de pago
+          if (payment.type === 'deuda') {
+            newDebt += payment.amount;
+          } else if (payment.type === 'abono') {
+            newDebt -= payment.amount;
+          } else if (payment.type === 'saldo') {
+            newDebt = 0;
+          }
+
+          // Actualizar estado según la deuda
+          if (newDebt === 0) {
+            newStatus = 'al-dia';
+          } else if (newDebt > 0) {
+            newStatus = 'deuda';
+          }
+
+          return {
+            ...account,
+            debt: Math.max(0, newDebt),
+            status: newStatus,
+            lastPaymentDate: new Date(),
+            payments: updatedPayments,
+          };
+        }
+        return account;
+      })
+    );
+  };
+
   return (
     <POSContext.Provider
       value={{
@@ -166,6 +236,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
         addCustomerAccount,
         updateCustomerAccount,
         deleteCustomerAccount,
+        addPaymentToAccount,
       }}
     >
       {children}

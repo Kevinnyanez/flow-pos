@@ -17,6 +17,7 @@ export default function Ventas() {
   const { products, addSale, currentUser, customerAccounts } = usePOS();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'debito' | 'credito'>('efectivo');
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -83,11 +84,13 @@ export default function Ventas() {
       total: calculateTotal(),
       userId: currentUser.id,
       customerAccountId: selectedCustomer || undefined,
+      paymentMethod,
     });
 
     toast.success('Venta registrada correctamente');
     setCart([]);
     setSelectedCustomer('');
+    setPaymentMethod('efectivo');
   };
 
   return (
@@ -183,6 +186,22 @@ export default function Ventas() {
                   </div>
 
                   <div className="space-y-4 pt-4 border-t border-border">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">
+                        Método de Pago
+                      </label>
+                      <Select value={paymentMethod} onValueChange={(value: 'efectivo' | 'debito' | 'credito') => setPaymentMethod(value)}>
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="efectivo">Efectivo</SelectItem>
+                          <SelectItem value="debito">Tarjeta de Débito</SelectItem>
+                          <SelectItem value="credito">Tarjeta de Crédito</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div>
                       <label className="text-sm font-medium mb-2 block">
                         Cliente (opcional)
