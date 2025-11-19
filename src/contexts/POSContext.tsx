@@ -28,12 +28,13 @@ export interface Sale {
   paymentMethod: PaymentMethod;
 }
 
-export interface Payment {
+export interface Movement {
   id: string;
   date: Date;
   amount: number;
-  type: 'deuda' | 'abono' | 'saldo';
+  type: 'venta' | 'abono';
   description?: string;
+  resultingBalance: number;
 }
 
 export interface CustomerAccount {
@@ -41,9 +42,9 @@ export interface CustomerAccount {
   name: string;
   status: 'al-dia' | 'deuda' | 'condicional';
   debt: number;
-  lastPaymentDate?: Date;
-  sales: string[];
-  payments: Payment[];
+  lastMovementDate?: Date;
+  movements: Movement[];
+  notes?: string;
 }
 
 export interface CashRegister {
@@ -73,7 +74,7 @@ interface POSContextType {
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
   deleteCustomerAccount: (id: string) => void;
-  addPaymentToAccount: (accountId: string, payment: Omit<Payment, 'id'>) => void;
+  addMovementToAccount: (accountId: string, movement: Omit<Movement, 'id' | 'resultingBalance'>) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -95,43 +96,70 @@ const initialCustomerAccounts: CustomerAccount[] = [
     name: 'María González',
     status: 'al-dia',
     debt: 0,
-    lastPaymentDate: new Date('2025-11-10'),
-    sales: [],
-    payments: [],
+    lastMovementDate: new Date('2025-11-10'),
+    movements: [
+      {
+        id: '1',
+        date: new Date('2025-10-20'),
+        amount: 500,
+        type: 'venta',
+        description: 'Venta productos varios',
+        resultingBalance: 500,
+      },
+      {
+        id: '2',
+        date: new Date('2025-11-10'),
+        amount: 500,
+        type: 'abono',
+        description: 'Pago total',
+        resultingBalance: 0,
+      },
+    ],
+    notes: '',
   },
   {
     id: '2',
     name: 'Juan Pérez',
     status: 'deuda',
     debt: 450,
-    lastPaymentDate: new Date('2025-10-15'),
-    sales: [],
-    payments: [
+    lastMovementDate: new Date('2025-10-15'),
+    movements: [
       {
-        id: '1',
+        id: '3',
         date: new Date('2025-10-15'),
         amount: 450,
-        type: 'deuda',
-        description: 'Deuda inicial',
+        type: 'venta',
+        description: 'Venta inicial',
+        resultingBalance: 450,
       },
     ],
+    notes: '',
   },
   {
     id: '3',
     name: 'Ana Martínez',
     status: 'condicional',
     debt: 120,
-    lastPaymentDate: new Date('2025-11-01'),
-    sales: [],
-    payments: [
+    lastMovementDate: new Date('2025-11-05'),
+    movements: [
       {
-        id: '2',
-        date: new Date('2025-11-01'),
-        amount: 120,
-        type: 'deuda',
-        description: 'Deuda inicial',
+        id: '4',
+        date: new Date('2025-10-20'),
+        amount: 300,
+        type: 'venta',
+        description: 'Venta productos',
+        resultingBalance: 300,
+      },
+      {
+        id: '5',
+        date: new Date('2025-11-05'),
+        amount: 180,
+        type: 'abono',
+        description: 'Pago parcial',
+        resultingBalance: 120,
       },
     ],
+    notes: '',
   },
 ];
 
@@ -178,37 +206,40 @@ export function POSProvider({ children }: { children: ReactNode }) {
     setCustomerAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const addPaymentToAccount = (accountId: string, payment: Omit<Payment, 'id'>) => {
-    const newPayment = { ...payment, id: Date.now().toString() };
+  const addMovementToAccount = (accountId: string, movement: Omit<Movement, 'id' | 'resultingBalance'>) => {
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
-          const updatedPayments = [...account.payments, newPayment];
           let newDebt = account.debt;
-          let newStatus = account.status;
 
-          // Actualizar deuda según el tipo de pago
-          if (payment.type === 'deuda') {
-            newDebt += payment.amount;
-          } else if (payment.type === 'abono') {
-            newDebt -= payment.amount;
-          } else if (payment.type === 'saldo') {
-            newDebt = 0;
+          // Calcular nueva deuda según el tipo de movimiento
+          if (movement.type === 'venta') {
+            newDebt += movement.amount;
+          } else if (movement.type === 'abono') {
+            newDebt = Math.max(0, newDebt - movement.amount);
           }
 
-          // Actualizar estado según la deuda
-          if (newDebt === 0) {
-            newStatus = 'al-dia';
-          } else if (newDebt > 0) {
+          // Determinar estado según la deuda
+          let newStatus: CustomerAccount['status'] = 'al-dia';
+          if (newDebt > 0) {
             newStatus = 'deuda';
           }
 
+          // Crear nuevo movimiento con saldo resultante
+          const newMovement: Movement = {
+            ...movement,
+            id: Date.now().toString(),
+            resultingBalance: newDebt,
+          };
+
+          const updatedMovements = [...account.movements, newMovement];
+
           return {
             ...account,
-            debt: Math.max(0, newDebt),
+            debt: newDebt,
             status: newStatus,
-            lastPaymentDate: new Date(),
-            payments: updatedPayments,
+            lastMovementDate: new Date(),
+            movements: updatedMovements,
           };
         }
         return account;
@@ -236,7 +267,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
         addCustomerAccount,
         updateCustomerAccount,
         deleteCustomerAccount,
-        addPaymentToAccount,
+        addMovementToAccount,
       }}
     >
       {children}

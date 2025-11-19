@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { usePOS, CustomerAccount, Payment } from '@/contexts/POSContext';
+import { usePOS, CustomerAccount, Movement } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -13,9 +13,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Trash2, Users, DollarSign, History, CheckCircle } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Users, DollarSign, History, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -25,24 +32,27 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function CuentasCorrientes() {
-  const { customerAccounts, addCustomerAccount, updateCustomerAccount, deleteCustomerAccount, addPaymentToAccount } =
+  const { customerAccounts, addCustomerAccount, updateCustomerAccount, deleteCustomerAccount, addMovementToAccount } =
     usePOS();
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CustomerAccount | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    status: 'al-dia' as CustomerAccount['status'],
-    debt: '0',
+    notes: '',
   });
 
-  // Estado para modal de pagos
-  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  // Estado para ver ficha del cliente
   const [selectedAccount, setSelectedAccount] = useState<CustomerAccount | null>(null);
-  const [paymentData, setPaymentData] = useState({
-    type: 'abono' as Payment['type'],
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  // Estado para agregar movimiento
+  const [isMovementOpen, setIsMovementOpen] = useState(false);
+  const [movementData, setMovementData] = useState({
+    type: 'abono' as Movement['type'],
     amount: '',
     description: '',
   });
@@ -56,17 +66,16 @@ export default function CuentasCorrientes() {
     if (editingAccount) {
       updateCustomerAccount(editingAccount.id, {
         name: formData.name,
-        status: formData.status,
-        debt: parseFloat(formData.debt),
+        notes: formData.notes,
       });
       toast.success('Cuenta actualizada correctamente');
     } else {
       addCustomerAccount({
         name: formData.name,
-        status: formData.status,
-        debt: parseFloat(formData.debt),
-        sales: [],
-        payments: [],
+        status: 'al-dia',
+        debt: 0,
+        movements: [],
+        notes: formData.notes,
       });
       toast.success('Cuenta creada correctamente');
     }
@@ -77,8 +86,7 @@ export default function CuentasCorrientes() {
     setEditingAccount(account);
     setFormData({
       name: account.name,
-      status: account.status,
-      debt: account.debt.toString(),
+      notes: account.notes || '',
     });
     setIsOpen(true);
   };
@@ -91,84 +99,97 @@ export default function CuentasCorrientes() {
   const handleCloseSheet = () => {
     setIsOpen(false);
     setEditingAccount(null);
-    setFormData({ name: '', status: 'al-dia', debt: '0' });
+    setFormData({ name: '', notes: '' });
   };
 
-  const handleOpenPayment = (account: CustomerAccount) => {
+  const handleViewDetail = (account: CustomerAccount) => {
     setSelectedAccount(account);
-    setIsPaymentOpen(true);
+    setIsDetailOpen(true);
   };
 
-  const handleClosePayment = () => {
-    setIsPaymentOpen(false);
+  const handleCloseDetail = () => {
+    setIsDetailOpen(false);
     setSelectedAccount(null);
-    setPaymentData({ type: 'abono', amount: '', description: '' });
   };
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
+  const handleOpenMovement = (account: CustomerAccount) => {
+    setSelectedAccount(account);
+    setIsMovementOpen(true);
+  };
+
+  const handleCloseMovement = () => {
+    setIsMovementOpen(false);
+    setSelectedAccount(null);
+    setMovementData({ type: 'abono', amount: '', description: '' });
+  };
+
+  const handleMovementSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAccount) return;
 
-    const amount = parseFloat(paymentData.amount);
+    const amount = parseFloat(movementData.amount);
     if (isNaN(amount) || amount <= 0) {
       toast.error('Ingresa un monto válido');
       return;
     }
 
-    if (paymentData.type === 'abono' && amount > selectedAccount.debt) {
+    if (movementData.type === 'abono' && amount > selectedAccount.debt) {
       toast.error('El abono no puede ser mayor a la deuda');
       return;
     }
 
-    addPaymentToAccount(selectedAccount.id, {
+    addMovementToAccount(selectedAccount.id, {
       date: new Date(),
       amount,
-      type: paymentData.type,
-      description: paymentData.description || undefined,
+      type: movementData.type,
+      description: movementData.description,
     });
 
-    const typeLabels = {
-      deuda: 'Deuda registrada',
-      abono: 'Abono registrado',
-      saldo: 'Deuda saldada',
-    };
-
-    toast.success(typeLabels[paymentData.type]);
-    handleClosePayment();
+    const message = movementData.type === 'venta' ? 'Venta registrada' : 'Abono registrado';
+    toast.success(message);
+    handleCloseMovement();
   };
 
   const getStatusBadge = (status: CustomerAccount['status']) => {
-    const variants = {
-      'al-dia': { variant: 'default' as const, label: 'Al Día' },
-      'deuda': { variant: 'destructive' as const, label: 'Con Deuda' },
-      'condicional': { variant: 'secondary' as const, label: 'Condicional' },
+    const statusMap = {
+      'al-dia': { label: 'Al Día', variant: 'default' as const },
+      deuda: { label: 'Con Deuda', variant: 'destructive' as const },
+      condicional: { label: 'Condicional', variant: 'secondary' as const },
     };
-    return variants[status];
+    const s = statusMap[status];
+    return (
+      <Badge variant={s.variant} className="text-xs">
+        {s.label}
+      </Badge>
+    );
   };
 
+  // Calcular estadísticas
+  const totalAccounts = customerAccounts.length;
+  const totalDebt = customerAccounts.reduce((sum, a) => sum + a.debt, 0);
+  const accountsWithDebt = customerAccounts.filter((a) => a.debt > 0).length;
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Cuentas Corrientes</h1>
-          <p className="text-muted-foreground mt-1">Gestiona las cuentas de tus clientes</p>
+          <h1 className="text-3xl font-bold">Cuentas Corrientes</h1>
+          <p className="text-muted-foreground">Gestión de cuentas y movimientos de clientes</p>
         </div>
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
-            <Button
-              className="gap-2 shadow-md hover:shadow-lg transition-all"
-              onClick={() => setEditingAccount(null)}
-            >
+            <Button onClick={() => handleCloseSheet()} className="gap-2">
               <Plus className="h-4 w-4" />
               Nueva Cuenta
             </Button>
           </SheetTrigger>
-          <SheetContent className="sm:max-w-lg">
+          <SheetContent>
             <SheetHeader>
               <SheetTitle>{editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}</SheetTitle>
               <SheetDescription>
                 {editingAccount
-                  ? 'Modifica los datos de la cuenta'
+                  ? 'Actualiza la información de la cuenta'
                   : 'Completa los datos para crear una nueva cuenta'}
               </SheetDescription>
             </SheetHeader>
@@ -177,47 +198,27 @@ export default function CuentasCorrientes() {
                 <Label htmlFor="name">Nombre del Cliente</Label>
                 <Input
                   id="name"
+                  placeholder="Nombre completo"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
-                  className="rounded-xl"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="status">Estado de la Cuenta</Label>
-                <Select value={formData.status} onValueChange={(value: CustomerAccount['status']) => setFormData({ ...formData, status: value })}>
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="al-dia">Al Día</SelectItem>
-                    <SelectItem value="deuda">Con Deuda</SelectItem>
-                    <SelectItem value="condicional">Condicional</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="debt">Deuda Actual</Label>
-                <Input
-                  id="debt"
-                  type="number"
-                  step="0.01"
-                  value={formData.debt}
-                  onChange={(e) => setFormData({ ...formData, debt: e.target.value })}
-                  required
-                  className="rounded-xl"
+                <Label htmlFor="notes">Notas (opcional)</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Información adicional del cliente"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={3}
                 />
               </div>
-              <div className="flex gap-3 pt-4">
-                <Button type="submit" className="flex-1 rounded-xl">
-                  {editingAccount ? 'Actualizar' : 'Crear Cuenta'}
+              <div className="flex gap-2 pt-4">
+                <Button type="submit" className="flex-1">
+                  {editingAccount ? 'Actualizar' : 'Crear'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleCloseSheet}
-                  className="flex-1 rounded-xl"
-                >
+                <Button type="button" variant="outline" onClick={handleCloseSheet}>
                   Cancelar
                 </Button>
               </div>
@@ -226,263 +227,315 @@ export default function CuentasCorrientes() {
         </Sheet>
       </div>
 
-      <Card className="p-6 border-border/50 shadow-md">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nombre..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 rounded-xl"
-          />
-        </div>
-      </Card>
+      {/* Estadísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalAccounts}</div>
+            <p className="text-xs text-muted-foreground">{accountsWithDebt} con deuda</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Deuda Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${totalDebt.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">Saldo pendiente</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Al Día</CardTitle>
+            <History className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalAccounts - accountsWithDebt}</div>
+            <p className="text-xs text-muted-foreground">Sin deuda pendiente</p>
+          </CardContent>
+        </Card>
+      </div>
 
-      <Card className="border-border/50 shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Barra de búsqueda */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar cliente..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {/* Tabla de cuentas */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Listado de Clientes</CardTitle>
+          <CardDescription>Haz clic en un cliente para ver su ficha completa</CardDescription>
+        </CardHeader>
+        <CardContent>
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="font-semibold">Cliente</TableHead>
-                <TableHead className="font-semibold">Estado</TableHead>
-                <TableHead className="font-semibold">Deuda</TableHead>
-                <TableHead className="font-semibold">Último Pago</TableHead>
-                <TableHead className="text-right font-semibold">Acciones</TableHead>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Deuda</TableHead>
+                <TableHead className="text-right">Movimientos</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAccounts.map((account) => {
-                const statusBadge = getStatusBadge(account.status);
-                return (
-                  <TableRow key={account.id} className="hover:bg-muted/50 transition-colors">
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                          <Users className="h-5 w-5 text-primary" />
-                        </div>
-                        {account.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className={account.debt > 0 ? 'text-destructive font-semibold' : 'text-success'}>
-                        ${account.debt.toFixed(2)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {account.lastPaymentDate
-                        ? new Date(account.lastPaymentDate).toLocaleDateString()
-                        : 'Sin registro'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleOpenPayment(account)}
-                          className="rounded-lg"
-                          title="Gestionar pagos"
-                        >
-                          <DollarSign className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEdit(account)}
-                          className="rounded-lg"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDelete(account.id)}
-                          className="rounded-lg text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {filteredAccounts.map((account) => (
+                <TableRow key={account.id} className="cursor-pointer hover:bg-muted/50">
+                  <TableCell
+                    className="font-medium"
+                    onClick={() => handleViewDetail(account)}
+                  >
+                    {account.name}
+                  </TableCell>
+                  <TableCell onClick={() => handleViewDetail(account)}>
+                    {getStatusBadge(account.status)}
+                  </TableCell>
+                  <TableCell
+                    className="text-right font-mono"
+                    onClick={() => handleViewDetail(account)}
+                  >
+                    ${account.debt.toFixed(2)}
+                  </TableCell>
+                  <TableCell
+                    className="text-right text-muted-foreground"
+                    onClick={() => handleViewDetail(account)}
+                  >
+                    {account.movements.length}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEdit(account)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete(account.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
-        </div>
-
-        {filteredAccounts.length === 0 && (
-          <div className="py-12 text-center">
-            <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-lg text-muted-foreground">No se encontraron cuentas</p>
-          </div>
-        )}
+        </CardContent>
       </Card>
 
-      {/* Modal de Pagos */}
-      <Sheet open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
-        <SheetContent className="sm:max-w-2xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Gestionar Cuenta - {selectedAccount?.name}</SheetTitle>
-            <SheetDescription>
-              Deuda actual: ${selectedAccount?.debt.toFixed(2)}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-6">
-            {/* Formulario de pago */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Registrar Movimiento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentType">Tipo de Movimiento</Label>
-                    <Select
-                      value={paymentData.type}
-                      onValueChange={(value: Payment['type']) =>
-                        setPaymentData({ ...paymentData, type: value })
-                      }
-                    >
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="deuda">Nueva Deuda</SelectItem>
-                        <SelectItem value="abono">Abono</SelectItem>
-                        <SelectItem value="saldo">Saldar Completamente</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {paymentData.type !== 'saldo' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="amount">Monto</Label>
-                      <Input
-                        id="amount"
-                        type="number"
-                        step="0.01"
-                        value={paymentData.amount}
-                        onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                        required
-                        className="rounded-xl"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Descripción (opcional)</Label>
-                    <Textarea
-                      id="description"
-                      value={paymentData.description}
-                      onChange={(e) => setPaymentData({ ...paymentData, description: e.target.value })}
-                      className="rounded-xl"
-                      placeholder="Notas sobre este movimiento..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <Button type="submit" className="flex-1 rounded-xl">
-                      Registrar
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleClosePayment}
-                      className="flex-1 rounded-xl"
-                    >
-                      Cancelar
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-
-            {/* Historial de pagos */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Historial de Movimientos
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {selectedAccount?.payments.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No hay movimientos registrados
+      {/* Dialog de detalle de ficha */}
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Ficha del Cliente
+            </DialogTitle>
+            <DialogDescription>
+              Historial completo de movimientos
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAccount && (
+            <div className="space-y-6">
+              {/* Panel de resumen */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="text-sm text-muted-foreground">Cliente</p>
+                  <p className="text-lg font-semibold">{selectedAccount.name}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Estado</p>
+                  <div className="mt-1">{getStatusBadge(selectedAccount.status)}</div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Deuda Actual</p>
+                  <p className="text-2xl font-bold text-destructive">
+                    ${selectedAccount.debt.toFixed(2)}
                   </p>
+                </div>
+              </div>
+
+              {/* Notas */}
+              {selectedAccount.notes && (
+                <div className="p-4 bg-muted/30 rounded-lg">
+                  <p className="text-sm font-medium mb-1">Notas</p>
+                  <p className="text-sm text-muted-foreground">{selectedAccount.notes}</p>
+                </div>
+              )}
+
+              {/* Botones de acción */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    handleCloseDetail();
+                    setMovementData({ type: 'venta', amount: '', description: '' });
+                    handleOpenMovement(selectedAccount);
+                  }}
+                  className="gap-2"
+                  variant="default"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Agregar Venta
+                </Button>
+                <Button
+                  onClick={() => {
+                    handleCloseDetail();
+                    setMovementData({ type: 'abono', amount: '', description: '' });
+                    handleOpenMovement(selectedAccount);
+                  }}
+                  className="gap-2"
+                  variant="outline"
+                >
+                  <TrendingDown className="h-4 w-4" />
+                  Registrar Abono
+                </Button>
+              </div>
+
+              {/* Historial de movimientos */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Historial de Movimientos</h3>
+                {selectedAccount.movements.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No hay movimientos registrados</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {selectedAccount?.payments
-                      .slice()
-                      .reverse()
-                      .map((payment) => (
-                        <div
-                          key={payment.id}
-                          className="flex items-start gap-3 rounded-lg border border-border p-3"
-                        >
-                          <div
-                            className={`rounded-lg p-2 ${
-                              payment.type === 'deuda'
-                                ? 'bg-destructive/10'
-                                : payment.type === 'abono'
-                                ? 'bg-primary/10'
-                                : 'bg-success/10'
-                            }`}
-                          >
-                            {payment.type === 'deuda' ? (
-                              <DollarSign className="h-4 w-4 text-destructive" />
-                            ) : payment.type === 'abono' ? (
-                              <DollarSign className="h-4 w-4 text-primary" />
-                            ) : (
-                              <CheckCircle className="h-4 w-4 text-success" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <p className="font-medium text-sm">
-                                {payment.type === 'deuda'
-                                  ? 'Nueva Deuda'
-                                  : payment.type === 'abono'
-                                  ? 'Abono'
-                                  : 'Saldo Completo'}
-                              </p>
-                              <span
-                                className={`font-semibold ${
-                                  payment.type === 'deuda'
-                                    ? 'text-destructive'
-                                    : 'text-success'
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                          <TableHead className="text-right">Saldo Resultante</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[...selectedAccount.movements]
+                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                          .map((movement) => (
+                            <TableRow key={movement.id}>
+                              <TableCell className="font-mono text-sm">
+                                {format(new Date(movement.date), 'dd/MM/yyyy HH:mm')}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={movement.type === 'venta' ? 'destructive' : 'default'}
+                                  className="gap-1"
+                                >
+                                  {movement.type === 'venta' ? (
+                                    <TrendingUp className="h-3 w-3" />
+                                  ) : (
+                                    <TrendingDown className="h-3 w-3" />
+                                  )}
+                                  {movement.type === 'venta' ? 'Venta' : 'Abono'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {movement.description || '-'}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-mono font-semibold ${
+                                  movement.type === 'venta' ? 'text-destructive' : 'text-success'
                                 }`}
                               >
-                                {payment.type === 'deuda' ? '+' : '-'}${payment.amount.toFixed(2)}
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {new Date(payment.date).toLocaleString('es-AR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </p>
-                            {payment.description && (
-                              <p className="text-sm text-muted-foreground mt-1">{payment.description}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                                {movement.type === 'venta' ? '+' : '-'}${movement.amount.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-bold">
+                                ${movement.resultingBalance.toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-        </SheetContent>
-      </Sheet>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para agregar movimiento */}
+      <Dialog open={isMovementOpen} onOpenChange={setIsMovementOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {movementData.type === 'venta' ? 'Registrar Venta' : 'Registrar Abono'}
+            </DialogTitle>
+            <DialogDescription>
+              {movementData.type === 'venta'
+                ? 'Agrega una nueva venta a la cuenta del cliente'
+                : 'Registra un pago parcial o total de la deuda'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleMovementSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="type">Tipo de Movimiento</Label>
+              <Select
+                value={movementData.type}
+                onValueChange={(value: Movement['type']) =>
+                  setMovementData({ ...movementData, type: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="venta">Venta (Cargo)</SelectItem>
+                  <SelectItem value="abono">Abono (Pago)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="amount">Monto</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={movementData.amount}
+                onChange={(e) => setMovementData({ ...movementData, amount: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Descripción (opcional)</Label>
+              <Textarea
+                id="description"
+                placeholder="Detalle del movimiento"
+                value={movementData.description}
+                onChange={(e) => setMovementData({ ...movementData, description: e.target.value })}
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 pt-4">
+              <Button type="submit" className="flex-1">
+                Registrar
+              </Button>
+              <Button type="button" variant="outline" onClick={handleCloseMovement}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
