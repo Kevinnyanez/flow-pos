@@ -139,7 +139,7 @@ export default function Dashboard() {
                     <p className="font-medium text-foreground">{account.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {account.status === 'al-dia' && 'Al día'}
-                      {account.status === 'deuda' && `Deuda: $${account.debt}`}
+                      {account.status === 'deuda' && `Deuda: $${account.totalRemaining.toFixed(2)}`}
                       {account.status === 'condicional' && 'Condicional'}
                     </p>
                   </div>

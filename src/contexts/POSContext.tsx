@@ -28,22 +28,33 @@ export interface Sale {
   paymentMethod: PaymentMethod;
 }
 
-export interface Movement {
+export interface Payment {
   id: string;
   date: Date;
   amount: number;
-  type: 'venta' | 'abono';
   description?: string;
-  resultingBalance: number;
+}
+
+export interface Debt {
+  id: string;
+  date: Date;
+  amount: number;
+  description: string;
+  paidAmount: number;
+  remainingAmount: number;
+  status: 'pendiente' | 'parcial' | 'pagado';
+  payments: Payment[];
 }
 
 export interface CustomerAccount {
   id: string;
   name: string;
   status: 'al-dia' | 'deuda' | 'condicional';
-  debt: number;
+  totalDebt: number;
+  totalPaid: number;
+  totalRemaining: number;
   lastMovementDate?: Date;
-  movements: Movement[];
+  debts: Debt[];
   notes?: string;
 }
 
@@ -74,7 +85,8 @@ interface POSContextType {
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
   deleteCustomerAccount: (id: string) => void;
-  addMovementToAccount: (accountId: string, movement: Omit<Movement, 'id' | 'resultingBalance'>) => void;
+  addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => void;
+  addPaymentToDebt: (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -95,24 +107,27 @@ const initialCustomerAccounts: CustomerAccount[] = [
     id: '1',
     name: 'María González',
     status: 'al-dia',
-    debt: 0,
+    totalDebt: 500,
+    totalPaid: 500,
+    totalRemaining: 0,
     lastMovementDate: new Date('2025-11-10'),
-    movements: [
+    debts: [
       {
         id: '1',
         date: new Date('2025-10-20'),
         amount: 500,
-        type: 'venta',
-        description: 'Venta productos varios',
-        resultingBalance: 500,
-      },
-      {
-        id: '2',
-        date: new Date('2025-11-10'),
-        amount: 500,
-        type: 'abono',
-        description: 'Pago total',
-        resultingBalance: 0,
+        description: 'Pantalón y remera',
+        paidAmount: 500,
+        remainingAmount: 0,
+        status: 'pagado',
+        payments: [
+          {
+            id: '1',
+            date: new Date('2025-11-10'),
+            amount: 500,
+            description: 'Pago total',
+          },
+        ],
       },
     ],
     notes: '',
@@ -121,16 +136,20 @@ const initialCustomerAccounts: CustomerAccount[] = [
     id: '2',
     name: 'Juan Pérez',
     status: 'deuda',
-    debt: 450,
+    totalDebt: 450,
+    totalPaid: 0,
+    totalRemaining: 450,
     lastMovementDate: new Date('2025-10-15'),
-    movements: [
+    debts: [
       {
-        id: '3',
+        id: '2',
         date: new Date('2025-10-15'),
         amount: 450,
-        type: 'venta',
-        description: 'Venta inicial',
-        resultingBalance: 450,
+        description: 'Campera de cuero',
+        paidAmount: 0,
+        remainingAmount: 450,
+        status: 'pendiente',
+        payments: [],
       },
     ],
     notes: '',
@@ -138,28 +157,54 @@ const initialCustomerAccounts: CustomerAccount[] = [
   {
     id: '3',
     name: 'Ana Martínez',
-    status: 'condicional',
-    debt: 120,
-    lastMovementDate: new Date('2025-11-05'),
-    movements: [
+    status: 'deuda',
+    totalDebt: 600,
+    totalPaid: 330,
+    totalRemaining: 270,
+    lastMovementDate: new Date('2025-11-15'),
+    debts: [
       {
-        id: '4',
+        id: '3',
         date: new Date('2025-10-20'),
         amount: 300,
-        type: 'venta',
-        description: 'Venta productos',
-        resultingBalance: 300,
+        description: 'Vestido de fiesta',
+        paidAmount: 180,
+        remainingAmount: 120,
+        status: 'parcial',
+        payments: [
+          {
+            id: '2',
+            date: new Date('2025-11-05'),
+            amount: 100,
+            description: 'Primera entrega',
+          },
+          {
+            id: '3',
+            date: new Date('2025-11-12'),
+            amount: 80,
+            description: 'Segunda entrega',
+          },
+        ],
       },
       {
-        id: '5',
-        date: new Date('2025-11-05'),
-        amount: 180,
-        type: 'abono',
-        description: 'Pago parcial',
-        resultingBalance: 120,
+        id: '4',
+        date: new Date('2025-11-10'),
+        amount: 300,
+        description: 'Zapatos y cartera',
+        paidAmount: 150,
+        remainingAmount: 150,
+        status: 'parcial',
+        payments: [
+          {
+            id: '4',
+            date: new Date('2025-11-15'),
+            amount: 150,
+            description: 'Pago parcial',
+          },
+        ],
       },
     ],
-    notes: '',
+    notes: 'Cliente de confianza',
   },
 ];
 
@@ -206,40 +251,89 @@ export function POSProvider({ children }: { children: ReactNode }) {
     setCustomerAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const addMovementToAccount = (accountId: string, movement: Omit<Movement, 'id' | 'resultingBalance'>) => {
+  const addDebtToAccount = (accountId: string, debt: Omit<Debt, 'id' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => {
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
-          let newDebt = account.debt;
-
-          // Calcular nueva deuda según el tipo de movimiento
-          if (movement.type === 'venta') {
-            newDebt += movement.amount;
-          } else if (movement.type === 'abono') {
-            newDebt = Math.max(0, newDebt - movement.amount);
-          }
-
-          // Determinar estado según la deuda
-          let newStatus: CustomerAccount['status'] = 'al-dia';
-          if (newDebt > 0) {
-            newStatus = 'deuda';
-          }
-
-          // Crear nuevo movimiento con saldo resultante
-          const newMovement: Movement = {
-            ...movement,
+          const newDebt: Debt = {
+            ...debt,
             id: Date.now().toString(),
-            resultingBalance: newDebt,
+            paidAmount: 0,
+            remainingAmount: debt.amount,
+            status: 'pendiente',
+            payments: [],
           };
 
-          const updatedMovements = [...account.movements, newMovement];
+          const updatedDebts = [...account.debts, newDebt];
+          const newTotalDebt = account.totalDebt + debt.amount;
+          const newTotalRemaining = account.totalRemaining + debt.amount;
+
+          let newStatus: CustomerAccount['status'] = 'deuda';
+          if (newTotalRemaining === 0) {
+            newStatus = 'al-dia';
+          }
 
           return {
             ...account,
-            debt: newDebt,
+            debts: updatedDebts,
+            totalDebt: newTotalDebt,
+            totalRemaining: newTotalRemaining,
             status: newStatus,
             lastMovementDate: new Date(),
-            movements: updatedMovements,
+          };
+        }
+        return account;
+      })
+    );
+  };
+
+  const addPaymentToDebt = (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => {
+    setCustomerAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id === accountId) {
+          const updatedDebts = account.debts.map((debt) => {
+            if (debt.id === debtId) {
+              const newPayment: Payment = {
+                ...payment,
+                id: Date.now().toString(),
+              };
+
+              const newPaidAmount = debt.paidAmount + payment.amount;
+              const newRemainingAmount = Math.max(0, debt.amount - newPaidAmount);
+
+              let newStatus: Debt['status'] = 'parcial';
+              if (newRemainingAmount === 0) {
+                newStatus = 'pagado';
+              } else if (newPaidAmount === 0) {
+                newStatus = 'pendiente';
+              }
+
+              return {
+                ...debt,
+                payments: [...debt.payments, newPayment],
+                paidAmount: newPaidAmount,
+                remainingAmount: newRemainingAmount,
+                status: newStatus,
+              };
+            }
+            return debt;
+          });
+
+          const newTotalPaid = updatedDebts.reduce((sum, debt) => sum + debt.paidAmount, 0);
+          const newTotalRemaining = updatedDebts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+
+          let newStatus: CustomerAccount['status'] = 'deuda';
+          if (newTotalRemaining === 0) {
+            newStatus = 'al-dia';
+          }
+
+          return {
+            ...account,
+            debts: updatedDebts,
+            totalPaid: newTotalPaid,
+            totalRemaining: newTotalRemaining,
+            status: newStatus,
+            lastMovementDate: new Date(),
           };
         }
         return account;
@@ -267,7 +361,8 @@ export function POSProvider({ children }: { children: ReactNode }) {
         addCustomerAccount,
         updateCustomerAccount,
         deleteCustomerAccount,
-        addMovementToAccount,
+        addDebtToAccount,
+        addPaymentToDebt,
       }}
     >
       {children}
