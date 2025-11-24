@@ -86,7 +86,10 @@ interface POSContextType {
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
   deleteCustomerAccount: (id: string) => void;
   addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => void;
+  updateDebt: (accountId: string, debtId: string, updates: { amount?: number; description?: string }) => void;
+  deleteDebt: (accountId: string, debtId: string) => void;
   addPaymentToDebt: (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => void;
+  deletePayment: (accountId: string, debtId: string, paymentId: string) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -287,6 +290,85 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const updateDebt = (accountId: string, debtId: string, updates: { amount?: number; description?: string }) => {
+    setCustomerAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id === accountId) {
+          const updatedDebts = account.debts.map((debt) => {
+            if (debt.id === debtId) {
+              const newAmount = updates.amount !== undefined ? updates.amount : debt.amount;
+              const newRemainingAmount = Math.max(0, newAmount - debt.paidAmount);
+
+              let newStatus: Debt['status'] = 'parcial';
+              if (newRemainingAmount === 0) {
+                newStatus = 'pagado';
+              } else if (debt.paidAmount === 0) {
+                newStatus = 'pendiente';
+              }
+
+              return {
+                ...debt,
+                ...(updates.amount !== undefined && { amount: newAmount }),
+                ...(updates.description !== undefined && { description: updates.description }),
+                remainingAmount: newRemainingAmount,
+                status: newStatus,
+              };
+            }
+            return debt;
+          });
+
+          const newTotalDebt = updatedDebts.reduce((sum, debt) => sum + debt.amount, 0);
+          const newTotalRemaining = updatedDebts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+
+          let newStatus: CustomerAccount['status'] = 'deuda';
+          if (newTotalRemaining === 0) {
+            newStatus = 'al-dia';
+          }
+
+          return {
+            ...account,
+            debts: updatedDebts,
+            totalDebt: newTotalDebt,
+            totalRemaining: newTotalRemaining,
+            status: newStatus,
+            lastMovementDate: new Date(),
+          };
+        }
+        return account;
+      })
+    );
+  };
+
+  const deleteDebt = (accountId: string, debtId: string) => {
+    setCustomerAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id === accountId) {
+          const updatedDebts = account.debts.filter((debt) => debt.id !== debtId);
+
+          const newTotalDebt = updatedDebts.reduce((sum, debt) => sum + debt.amount, 0);
+          const newTotalPaid = updatedDebts.reduce((sum, debt) => sum + debt.paidAmount, 0);
+          const newTotalRemaining = updatedDebts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+
+          let newStatus: CustomerAccount['status'] = 'deuda';
+          if (newTotalRemaining === 0) {
+            newStatus = 'al-dia';
+          }
+
+          return {
+            ...account,
+            debts: updatedDebts,
+            totalDebt: newTotalDebt,
+            totalPaid: newTotalPaid,
+            totalRemaining: newTotalRemaining,
+            status: newStatus,
+            lastMovementDate: new Date(),
+          };
+        }
+        return account;
+      })
+    );
+  };
+
   const addPaymentToDebt = (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => {
     setCustomerAccounts((prev) =>
       prev.map((account) => {
@@ -341,6 +423,56 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const deletePayment = (accountId: string, debtId: string, paymentId: string) => {
+    setCustomerAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id === accountId) {
+          const updatedDebts = account.debts.map((debt) => {
+            if (debt.id === debtId) {
+              const updatedPayments = debt.payments.filter((p) => p.id !== paymentId);
+              const newPaidAmount = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
+              const newRemainingAmount = Math.max(0, debt.amount - newPaidAmount);
+
+              let newStatus: Debt['status'] = 'parcial';
+              if (newRemainingAmount === 0) {
+                newStatus = 'pagado';
+              } else if (newPaidAmount === 0) {
+                newStatus = 'pendiente';
+              }
+
+              return {
+                ...debt,
+                payments: updatedPayments,
+                paidAmount: newPaidAmount,
+                remainingAmount: newRemainingAmount,
+                status: newStatus,
+              };
+            }
+            return debt;
+          });
+
+          const newTotalPaid = updatedDebts.reduce((sum, debt) => sum + debt.paidAmount, 0);
+          const newTotalRemaining = updatedDebts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+
+          let newStatus: CustomerAccount['status'] = 'deuda';
+          if (newTotalRemaining === 0) {
+            newStatus = 'al-dia';
+          }
+
+          return {
+            ...account,
+            debts: updatedDebts,
+            totalPaid: newTotalPaid,
+            totalRemaining: newTotalRemaining,
+            status: newStatus,
+            lastMovementDate: new Date(),
+          };
+        }
+        return account;
+      })
+    );
+  };
+
   return (
     <POSContext.Provider
       value={{
@@ -362,7 +494,10 @@ export function POSProvider({ children }: { children: ReactNode }) {
         updateCustomerAccount,
         deleteCustomerAccount,
         addDebtToAccount,
+        updateDebt,
+        deleteDebt,
         addPaymentToDebt,
+        deletePayment,
       }}
     >
       {children}
