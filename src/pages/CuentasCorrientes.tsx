@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePOS } from '@/contexts/POSContext';
+import { usePOS, Product } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -56,8 +56,16 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Minus,
+  ShoppingCart,
+  Package,
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+interface CartItem {
+  product: Product;
+  quantity: number;
+}
 
 export default function CuentasCorrientes() {
   const { 
@@ -67,7 +75,8 @@ export default function CuentasCorrientes() {
     updateDebt,
     deleteDebt,
     addPaymentToDebt,
-    deletePayment
+    deletePayment,
+    products
   } = usePOS();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -90,7 +99,7 @@ export default function CuentasCorrientes() {
   // Form states
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountNotes, setNewAccountNotes] = useState('');
-  const [newDebtAmount, setNewDebtAmount] = useState('');
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [newDebtDescription, setNewDebtDescription] = useState('');
   const [editDebtAmount, setEditDebtAmount] = useState('');
   const [editDebtDescription, setEditDebtDescription] = useState('');
@@ -126,14 +135,55 @@ export default function CuentasCorrientes() {
     }
   };
 
+  const addToCart = (product: Product) => {
+    const existingItem = cart.find((item) => item.product.id === product.id);
+    if (existingItem) {
+      if (existingItem.quantity < product.stock) {
+        setCart(
+          cart.map((item) =>
+            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          )
+        );
+      }
+    } else {
+      if (product.stock > 0) {
+        setCart([...cart, { product, quantity: 1 }]);
+      }
+    }
+  };
+
+  const updateQuantity = (productId: string, change: number) => {
+    setCart((prevCart) =>
+      prevCart
+        .map((item) => {
+          if (item.product.id === productId) {
+            const newQuantity = item.quantity + change;
+            if (newQuantity <= 0) return null;
+            if (newQuantity > item.product.stock) return item;
+            return { ...item, quantity: newQuantity };
+          }
+          return item;
+        })
+        .filter((item): item is CartItem => item !== null)
+    );
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(cart.filter((item) => item.product.id !== productId));
+  };
+
+  const calculateTotal = () => {
+    return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  };
+
   const handleAddDebt = () => {
-    if (selectedAccount && newDebtAmount && newDebtDescription.trim()) {
+    if (selectedAccount && cart.length > 0 && newDebtDescription.trim()) {
       addDebtToAccount(selectedAccount, {
         date: new Date(),
-        amount: parseFloat(newDebtAmount),
+        items: cart,
         description: newDebtDescription,
       });
-      setNewDebtAmount('');
+      setCart([]);
       setNewDebtDescription('');
       setIsNewDebtOpen(false);
     }
@@ -249,42 +299,123 @@ export default function CuentasCorrientes() {
                   Nueva Venta
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Registrar Nueva Venta (Deuda)</DialogTitle>
                   <DialogDescription>
-                    Registra una nueva venta que el cliente se llevó fiado
+                    Selecciona los productos que el cliente se llevó fiado
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="amount">Monto Total</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={newDebtAmount}
-                      onChange={(e) => setNewDebtAmount(e.target.value)}
-                    />
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-semibold">Productos Disponibles</Label>
+                      <div className="mt-3 space-y-2 max-h-96 overflow-y-auto border rounded-lg p-3">
+                        {products.map((product) => (
+                          <button
+                            key={product.id}
+                            onClick={() => addToCart(product)}
+                            disabled={product.stock === 0}
+                            className="w-full flex items-center justify-between rounded-lg border-2 border-border p-3 text-left transition-all hover:border-primary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{product.name}</p>
+                              <p className="text-xs text-muted-foreground">{product.code}</p>
+                              <p className="text-sm font-bold text-primary mt-1">${product.price}</p>
+                            </div>
+                            <Badge variant={product.stock < 10 ? 'destructive' : 'secondary'}>
+                              {product.stock}
+                            </Badge>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="description">Descripción</Label>
-                    <Textarea
-                      id="description"
-                      placeholder="Ej: Campera de cuero negra talle M"
-                      value={newDebtDescription}
-                      onChange={(e) => setNewDebtDescription(e.target.value)}
-                    />
+
+                  <div className="space-y-4">
+                    <div className="border rounded-lg p-4 bg-accent/50">
+                      <Label className="text-base font-semibold flex items-center gap-2">
+                        <ShoppingCart className="w-4 h-4" />
+                        Carrito
+                      </Label>
+                      {cart.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">
+                          Selecciona productos para agregar
+                        </p>
+                      ) : (
+                        <div className="space-y-2 mt-3">
+                          {cart.map((item) => (
+                            <div
+                              key={item.product.id}
+                              className="flex items-center gap-2 rounded-lg border p-2 bg-background"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-xs truncate">{item.product.name}</p>
+                                <p className="text-xs text-muted-foreground">${item.product.price}</p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => updateQuantity(item.product.id, -1)}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-6 text-center text-xs font-medium">{item.quantity}</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => updateQuantity(item.product.id, 1)}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => removeFromCart(item.product.id)}
+                                  className="h-6 w-6 p-0 text-destructive"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="pt-3 border-t">
+                            <div className="flex justify-between items-center text-lg font-bold">
+                              <span>Total:</span>
+                              <span className="text-primary">${calculateTotal().toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor="description">Descripción</Label>
+                      <Textarea
+                        id="description"
+                        placeholder="Ej: Compra en tienda - cliente habitual"
+                        value={newDebtDescription}
+                        onChange={(e) => setNewDebtDescription(e.target.value)}
+                      />
+                    </div>
+
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => {
+                        setIsNewDebtOpen(false);
+                        setCart([]);
+                        setNewDebtDescription('');
+                      }}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleAddDebt} disabled={cart.length === 0}>
+                        <Package className="w-4 h-4 mr-2" />
+                        Registrar Venta
+                      </Button>
+                    </DialogFooter>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsNewDebtOpen(false)}>
-                      Cancelar
-                    </Button>
-                    <Button onClick={handleAddDebt}>
-                      Registrar Venta
-                    </Button>
-                  </DialogFooter>
                 </div>
               </DialogContent>
             </Dialog>
@@ -386,6 +517,19 @@ export default function CuentasCorrientes() {
                           <Calendar className="w-3 h-3" />
                           {format(new Date(debt.date), 'dd/MM/yyyy')}
                         </p>
+                        {debt.items && debt.items.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                              <Package className="w-3 h-3" />
+                              Productos:
+                            </p>
+                            {debt.items.map((item, idx) => (
+                              <p key={idx} className="text-xs text-muted-foreground ml-4">
+                                • {item.product.name} x{item.quantity} - ${(item.product.price * item.quantity).toFixed(2)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right flex flex-col items-end gap-2">
                         <p className="text-lg font-bold">${debt.amount.toFixed(2)}</p>

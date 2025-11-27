@@ -38,6 +38,7 @@ export interface Payment {
 export interface Debt {
   id: string;
   date: Date;
+  items: { product: Product; quantity: number }[];
   amount: number;
   description: string;
   paidAmount: number;
@@ -85,7 +86,7 @@ interface POSContextType {
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
   deleteCustomerAccount: (id: string) => void;
-  addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => void;
+  addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => void;
   updateDebt: (accountId: string, debtId: string, updates: { amount?: number; description?: string }) => void;
   deleteDebt: (accountId: string, debtId: string) => void;
   addPaymentToDebt: (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => void;
@@ -118,6 +119,9 @@ const initialCustomerAccounts: CustomerAccount[] = [
       {
         id: '1',
         date: new Date('2025-10-20'),
+        items: [
+          { product: initialProducts[0], quantity: 1 },
+        ],
         amount: 500,
         description: 'Pantalón y remera',
         paidAmount: 500,
@@ -147,6 +151,9 @@ const initialCustomerAccounts: CustomerAccount[] = [
       {
         id: '2',
         date: new Date('2025-10-15'),
+        items: [
+          { product: initialProducts[1], quantity: 2 },
+        ],
         amount: 450,
         description: 'Campera de cuero',
         paidAmount: 0,
@@ -169,6 +176,9 @@ const initialCustomerAccounts: CustomerAccount[] = [
       {
         id: '3',
         date: new Date('2025-10-20'),
+        items: [
+          { product: initialProducts[2], quantity: 1 },
+        ],
         amount: 300,
         description: 'Vestido de fiesta',
         paidAmount: 180,
@@ -192,6 +202,10 @@ const initialCustomerAccounts: CustomerAccount[] = [
       {
         id: '4',
         date: new Date('2025-11-10'),
+        items: [
+          { product: initialProducts[3], quantity: 1 },
+          { product: initialProducts[4], quantity: 2 },
+        ],
         amount: 300,
         description: 'Zapatos y cartera',
         paidAmount: 150,
@@ -254,22 +268,31 @@ export function POSProvider({ children }: { children: ReactNode }) {
     setCustomerAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const addDebtToAccount = (accountId: string, debt: Omit<Debt, 'id' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => {
+  const addDebtToAccount = (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => {
+    // Calculate total from items
+    const calculatedAmount = debt.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+
+    // Update stock
+    debt.items.forEach(({ product, quantity }) => {
+      updateProduct(product.id, { stock: product.stock - quantity });
+    });
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
           const newDebt: Debt = {
             ...debt,
             id: Date.now().toString(),
+            amount: calculatedAmount,
             paidAmount: 0,
-            remainingAmount: debt.amount,
+            remainingAmount: calculatedAmount,
             status: 'pendiente',
             payments: [],
           };
 
           const updatedDebts = [...account.debts, newDebt];
-          const newTotalDebt = account.totalDebt + debt.amount;
-          const newTotalRemaining = account.totalRemaining + debt.amount;
+          const newTotalDebt = account.totalDebt + calculatedAmount;
+          const newTotalRemaining = account.totalRemaining + calculatedAmount;
 
           let newStatus: CustomerAccount['status'] = 'deuda';
           if (newTotalRemaining === 0) {
