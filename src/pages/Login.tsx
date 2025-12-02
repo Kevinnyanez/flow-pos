@@ -1,26 +1,75 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePOS, User, UserRole } from '@/contexts/POSContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, Check } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ShoppingCart } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { z } from 'zod';
+import { toast } from 'sonner';
 
-const users: User[] = [
-  { id: '1', name: 'Administrador', role: 'admin' },
-  { id: '2', name: 'Usuario 1', role: 'user1' },
-  { id: '3', name: 'Usuario 2', role: 'user2' },
-  { id: '4', name: 'Usuario 3', role: 'user3' },
-];
+const authSchema = z.object({
+  email: z.string().email('Ingresa un email válido'),
+  password: z
+    .string()
+    .min(6, 'La contraseña debe tener al menos 6 caracteres'),
+});
 
 export default function Login() {
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const { setCurrentUser } = usePOS();
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ email: '', password: '' });
   const navigate = useNavigate();
 
-  const handleLogin = () => {
-    if (selectedUser) {
-      setCurrentUser(selectedUser);
-      navigate('/');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = authSchema.safeParse(form);
+
+    if (!result.success) {
+      const firstError = Object.values(result.error.flatten().fieldErrors)[0]?.[0];
+      if (firstError) {
+        toast.error(firstError);
+      }
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: form.email,
+          password: form.password,
+        });
+
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+
+        toast.success('Bienvenido al sistema');
+        navigate('/');
+      } else {
+        const redirectTo = `${window.location.origin}/`;
+        const { error } = await supabase.auth.signUp({
+          email: form.email,
+          password: form.password,
+          options: {
+            emailRedirectTo: redirectTo,
+          },
+        });
+
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+
+        toast.success('Registro exitoso. Ahora puedes iniciar sesión.');
+        setMode('login');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -33,44 +82,62 @@ export default function Login() {
           </div>
           <CardTitle className="text-3xl font-bold tracking-tight">ModernPOS</CardTitle>
           <CardDescription className="text-base">
-            Selecciona un usuario para acceder al sistema
+            {mode === 'login'
+              ? 'Ingresa con tu email y contraseña para acceder al sistema'
+              : 'Crea una cuenta para comenzar a usar el sistema'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3">
-            {users.map((user) => (
-              <button
-                key={user.id}
-                onClick={() => setSelectedUser(user)}
-                className={`group relative flex items-center justify-between rounded-xl border-2 p-4 text-left transition-all hover:border-primary hover:shadow-md ${
-                  selectedUser?.id === user.id
-                    ? 'border-primary bg-primary/5 shadow-md'
-                    : 'border-border bg-card'
-                }`}
-              >
-                <div>
-                  <p className="font-medium text-foreground">{user.name}</p>
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {user.role === 'admin' ? 'Administrador' : user.role}
-                  </p>
-                </div>
-                {selectedUser?.id === user.id && (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary">
-                    <Check className="h-4 w-4 text-primary-foreground" />
-                  </div>
-                )}
-              </button>
-            ))}
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
+            <Button
+              type="button"
+              variant={mode === 'login' ? 'default' : 'ghost'}
+              className="w-full rounded-lg"
+              onClick={() => setMode('login')}
+            >
+              Ingresar
+            </Button>
+            <Button
+              type="button"
+              variant={mode === 'signup' ? 'default' : 'ghost'}
+              className="w-full rounded-lg"
+              onClick={() => setMode('signup')}
+            >
+              Registrarse
+            </Button>
           </div>
 
-          <Button
-            onClick={handleLogin}
-            disabled={!selectedUser}
-            className="w-full h-11 rounded-xl font-medium shadow-md hover:shadow-lg transition-all"
-            size="lg"
-          >
-            Ingresar al Sistema
-          </Button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Contraseña</Label>
+              <Input
+                id="password"
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+                className="rounded-xl"
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full h-11 rounded-xl font-medium shadow-md hover:shadow-lg transition-all"
+              disabled={loading}
+            >
+              {mode === 'login' ? 'Ingresar al Sistema' : 'Crear Cuenta'}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

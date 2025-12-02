@@ -2,6 +2,7 @@ import { usePOS } from '@/contexts/POSContext';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,11 +15,11 @@ import { LogOut, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function AppHeader() {
-  const { currentUser, setCurrentUser } = usePOS();
+  const { currentUser } = usePOS();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     navigate('/login');
   };
 
@@ -48,13 +49,13 @@ export function AppHeader() {
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="end" forceMount>
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{currentUser.name}</p>
-                <p className="text-xs leading-none text-muted-foreground capitalize">
-                  {currentUser.role === 'admin' ? 'Administrador' : currentUser.role}
-                </p>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+             <DropdownMenuLabel className="font-normal">
+               <div className="flex flex-col space-y-1">
+                 <p className="text-sm font-medium leading-none">{currentUser.name}</p>
+                 <p className="text-xs leading-none text-muted-foreground capitalize">
+                   {currentUser.role === 'admin' ? 'Administrador' : 'Usuario'}
+                 </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

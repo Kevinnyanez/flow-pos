@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { supabase } from "@/integrations/supabase/client";
 
-export type UserRole = 'admin' | 'user1' | 'user2' | 'user3';
+export type UserRole = 'admin' | 'user';
 
 export interface User {
   id: string;
@@ -71,6 +72,7 @@ export interface CashRegister {
 interface POSContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
+  authInitialized: boolean;
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   sales: Sale[];
@@ -95,154 +97,177 @@ interface POSContextType {
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
-const initialProducts: Product[] = [
-  { id: '1', name: 'Laptop HP', code: 'LHP001', price: 1200, stock: 15 },
-  { id: '2', name: 'Mouse Logitech', code: 'MLG002', price: 25, stock: 50 },
-  { id: '3', name: 'Teclado Mecánico', code: 'TKM003', price: 85, stock: 30 },
-  { id: '4', name: 'Monitor Samsung 24"', code: 'MSM004', price: 180, stock: 20 },
-  { id: '5', name: 'Webcam HD', code: 'WHD005', price: 60, stock: 25 },
-  { id: '6', name: 'Audífonos Sony', code: 'ASN006', price: 45, stock: 40 },
-  { id: '7', name: 'Impresora Epson', code: 'IEP007', price: 220, stock: 12 },
-  { id: '8', name: 'Tablet Android', code: 'TAB008', price: 350, stock: 18 },
-];
+const initialProducts: Product[] = [];
 
-const initialCustomerAccounts: CustomerAccount[] = [
-  {
-    id: '1',
-    name: 'María González',
-    status: 'al-dia',
-    totalDebt: 500,
-    totalPaid: 500,
-    totalRemaining: 0,
-    lastMovementDate: new Date('2025-11-10'),
-    debts: [
-      {
-        id: '1',
-        date: new Date('2025-10-20'),
-        items: [
-          { product: initialProducts[0], quantity: 1 },
-        ],
-        amount: 500,
-        description: 'Pantalón y remera',
-        paidAmount: 500,
-        remainingAmount: 0,
-        status: 'pagado',
-        payments: [
-          {
-            id: '1',
-            date: new Date('2025-11-10'),
-            amount: 500,
-            description: 'Pago total',
-          },
-        ],
-      },
-    ],
-    notes: '',
-  },
-  {
-    id: '2',
-    name: 'Juan Pérez',
-    status: 'deuda',
-    totalDebt: 450,
-    totalPaid: 0,
-    totalRemaining: 450,
-    lastMovementDate: new Date('2025-10-15'),
-    debts: [
-      {
-        id: '2',
-        date: new Date('2025-10-15'),
-        items: [
-          { product: initialProducts[1], quantity: 2 },
-        ],
-        amount: 450,
-        description: 'Campera de cuero',
-        paidAmount: 0,
-        remainingAmount: 450,
-        status: 'pendiente',
-        payments: [],
-      },
-    ],
-    notes: '',
-  },
-  {
-    id: '3',
-    name: 'Ana Martínez',
-    status: 'deuda',
-    totalDebt: 600,
-    totalPaid: 330,
-    totalRemaining: 270,
-    lastMovementDate: new Date('2025-11-15'),
-    debts: [
-      {
-        id: '3',
-        date: new Date('2025-10-20'),
-        items: [
-          { product: initialProducts[2], quantity: 1 },
-        ],
-        amount: 300,
-        description: 'Vestido de fiesta',
-        paidAmount: 180,
-        remainingAmount: 120,
-        status: 'parcial',
-        payments: [
-          {
-            id: '2',
-            date: new Date('2025-11-05'),
-            amount: 100,
-            description: 'Primera entrega',
-          },
-          {
-            id: '3',
-            date: new Date('2025-11-12'),
-            amount: 80,
-            description: 'Segunda entrega',
-          },
-        ],
-      },
-      {
-        id: '4',
-        date: new Date('2025-11-10'),
-        items: [
-          { product: initialProducts[3], quantity: 1 },
-          { product: initialProducts[4], quantity: 2 },
-        ],
-        amount: 300,
-        description: 'Zapatos y cartera',
-        paidAmount: 150,
-        remainingAmount: 150,
-        status: 'parcial',
-        payments: [
-          {
-            id: '4',
-            date: new Date('2025-11-15'),
-            amount: 150,
-            description: 'Pago parcial',
-          },
-        ],
-      },
-    ],
-    notes: 'Cliente de confianza',
-  },
-];
+
+const initialCustomerAccounts: CustomerAccount[] = [];
 
 export function POSProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [sales, setSales] = useState<Sale[]>([]);
   const [customerAccounts, setCustomerAccounts] = useState<CustomerAccount[]>(initialCustomerAccounts);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
 
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const authUser = session?.user ?? null;
+      if (!authUser) {
+        setCurrentUser(null);
+        return;
+      }
+
+      setCurrentUser({
+        id: authUser.id,
+        name: authUser.email ?? 'Usuario',
+        role: 'user',
+      });
+
+      setTimeout(() => {
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', authUser.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (!data) return;
+            const appRole = data.role as 'admin' | 'moderator' | 'user';
+            const mappedRole: UserRole = appRole === 'admin' ? 'admin' : 'user';
+            setCurrentUser((prev) =>
+              prev
+                ? { ...prev, role: mappedRole }
+                : {
+                    id: authUser.id,
+                    name: authUser.email ?? 'Usuario',
+                    role: mappedRole,
+                  }
+            );
+          })
+          .catch(() => {
+            // ignore
+          });
+      }, 0);
+    });
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        const authUser = session?.user ?? null;
+        if (!authUser) {
+          setCurrentUser(null);
+          return;
+        }
+
+        setCurrentUser({
+          id: authUser.id,
+          name: authUser.email ?? 'Usuario',
+          role: 'user',
+        });
+
+        setTimeout(() => {
+          supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', authUser.id)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (!data) return;
+              const appRole = data.role as 'admin' | 'moderator' | 'user';
+              const mappedRole: UserRole = appRole === 'admin' ? 'admin' : 'user';
+              setCurrentUser((prev) =>
+                prev
+                  ? { ...prev, role: mappedRole }
+                  : {
+                      id: authUser.id,
+                      name: authUser.email ?? 'Usuario',
+                      role: mappedRole,
+                    }
+              );
+            })
+            .catch(() => {
+              // ignore
+            });
+        }, 0);
+      })
+      .finally(() => {
+        setAuthInitialized(true);
+      });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('name');
+
+      if (error || !data) return;
+
+      setProducts(
+        data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          price: Number(p.price),
+          stock: p.stock ?? 0,
+        }))
+      );
+    };
+
+    void loadProducts();
+  }, []);
+
+
   const addProduct = (product: Omit<Product, 'id'>) => {
-    const newProduct = { ...product, id: Date.now().toString() };
-    setProducts((prev) => [...prev, newProduct]);
+    supabase
+      .from('products')
+      .insert({
+        name: product.name,
+        code: product.code,
+        price: product.price,
+        stock: product.stock,
+      })
+      .select('*')
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) return;
+
+        const newProduct: Product = {
+          id: data.id,
+          name: data.name,
+          code: data.code,
+          price: Number(data.price),
+          stock: data.stock ?? 0,
+        };
+
+        setProducts((prev) => [...prev, newProduct]);
+      });
   };
 
   const updateProduct = (id: string, product: Partial<Product>) => {
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...product } : p)));
+
+    const payload: Record<string, unknown> = {};
+    if (product.name !== undefined) payload.name = product.name;
+    if (product.code !== undefined) payload.code = product.code;
+    if (product.price !== undefined) payload.price = product.price;
+    if (product.stock !== undefined) payload.stock = product.stock;
+
+    if (Object.keys(payload).length === 0) return;
+
+    void supabase.from('products').update(payload).eq('id', id);
   };
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
+    void supabase.from('products').delete().eq('id', id);
   };
 
   const addSale = (sale: Omit<Sale, 'id'>) => {
