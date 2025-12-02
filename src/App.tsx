@@ -18,7 +18,11 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
-  const { currentUser } = usePOS();
+  const { currentUser, authInitialized } = usePOS();
+
+  if (!authInitialized) {
+    return null;
+  }
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
