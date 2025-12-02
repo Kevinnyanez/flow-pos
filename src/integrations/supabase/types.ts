@@ -14,16 +14,354 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cash_registers: {
+        Row: {
+          closing_balance: number
+          created_at: string
+          date: string
+          id: string
+          opening_balance: number
+          total_sales: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          closing_balance?: number
+          created_at?: string
+          date?: string
+          id?: string
+          opening_balance?: number
+          total_sales?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          closing_balance?: number
+          created_at?: string
+          date?: string
+          id?: string
+          opening_balance?: number
+          total_sales?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      customer_accounts: {
+        Row: {
+          created_at: string
+          id: string
+          last_movement_at: string | null
+          name: string
+          notes: string | null
+          status: Database["public"]["Enums"]["account_status"]
+          total_debt: number
+          total_paid: number
+          total_remaining: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_movement_at?: string | null
+          name: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["account_status"]
+          total_debt?: number
+          total_paid?: number
+          total_remaining?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_movement_at?: string | null
+          name?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["account_status"]
+          total_debt?: number
+          total_paid?: number
+          total_remaining?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      debt_items: {
+        Row: {
+          created_at: string
+          debt_id: string
+          id: string
+          product_id: string
+          quantity: number
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          debt_id: string
+          id?: string
+          product_id: string
+          quantity: number
+          unit_price: number
+        }
+        Update: {
+          created_at?: string
+          debt_id?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debt_items_debt_id_fkey"
+            columns: ["debt_id"]
+            isOneToOne: false
+            referencedRelation: "debts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "debt_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      debts: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_account_id: string
+          date: string
+          description: string
+          id: string
+          paid_amount: number
+          remaining_amount: number
+          status: Database["public"]["Enums"]["debt_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          customer_account_id: string
+          date?: string
+          description: string
+          id?: string
+          paid_amount?: number
+          remaining_amount?: number
+          status?: Database["public"]["Enums"]["debt_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_account_id?: string
+          date?: string
+          description?: string
+          id?: string
+          paid_amount?: number
+          remaining_amount?: number
+          status?: Database["public"]["Enums"]["debt_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debts_customer_account_id_fkey"
+            columns: ["customer_account_id"]
+            isOneToOne: false
+            referencedRelation: "customer_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          date: string
+          debt_id: string
+          description: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          date?: string
+          debt_id: string
+          description?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          date?: string
+          debt_id?: string
+          description?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_debt_id_fkey"
+            columns: ["debt_id"]
+            isOneToOne: false
+            referencedRelation: "debts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+          price: number
+          stock: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          price: number
+          stock?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          price?: number
+          stock?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sale_items: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number
+          sale_id: string
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity: number
+          sale_id: string
+          unit_price: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          sale_id?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales: {
+        Row: {
+          created_at: string
+          customer_account_id: string | null
+          date: string
+          id: string
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          total: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_account_id?: string | null
+          date?: string
+          id?: string
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          total: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_account_id?: string | null
+          date?: string
+          id?: string
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          total?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_customer_account_id_fkey"
+            columns: ["customer_account_id"]
+            isOneToOne: false
+            referencedRelation: "customer_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      account_status: "al-dia" | "deuda" | "condicional"
+      app_role: "admin" | "moderator" | "user"
+      debt_status: "pendiente" | "parcial" | "pagado"
+      payment_method: "efectivo" | "debito" | "credito"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +488,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_status: ["al-dia", "deuda", "condicional"],
+      app_role: ["admin", "moderator", "user"],
+      debt_status: ["pendiente", "parcial", "pagado"],
+      payment_method: ["efectivo", "debito", "credito"],
+    },
   },
 } as const
