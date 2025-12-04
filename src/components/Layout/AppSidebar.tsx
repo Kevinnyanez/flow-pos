@@ -8,6 +8,7 @@ import {
   RefreshCw,
   DollarSign,
   FileText,
+  UserCog,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -22,13 +23,14 @@ import {
 } from '@/components/ui/sidebar';
 
 const allMenuItems = [
-  { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['admin', 'user1', 'user2', 'user3'] },
-  { title: 'Ventas', url: '/ventas', icon: ShoppingCart, roles: ['admin', 'user1', 'user2', 'user3'] },
-  { title: 'Stock', url: '/stock', icon: Package, roles: ['admin', 'user1', 'user2', 'user3'] },
-  { title: 'Cuentas Corrientes', url: '/cuentas', icon: Users, roles: ['admin', 'user1', 'user2', 'user3'] },
-  { title: 'Devoluciones', url: '/devoluciones', icon: RefreshCw, roles: ['admin', 'user1', 'user2', 'user3'] },
+  { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['admin', 'user'] },
+  { title: 'Ventas', url: '/ventas', icon: ShoppingCart, roles: ['admin', 'user'] },
+  { title: 'Stock', url: '/stock', icon: Package, roles: ['admin', 'user'] },
+  { title: 'Cuentas Corrientes', url: '/cuentas', icon: Users, roles: ['admin', 'user'] },
+  { title: 'Devoluciones', url: '/devoluciones', icon: RefreshCw, roles: ['admin', 'user'] },
   { title: 'Caja / Arqueo', url: '/caja', icon: DollarSign, roles: ['admin'] },
   { title: 'Registro de Ventas', url: '/registro-ventas', icon: FileText, roles: ['admin'] },
+  { title: 'Gestión de Usuarios', url: '/gestion-usuarios', icon: UserCog, roles: ['admin'] },
 ];
 
 export function AppSidebar() {

@@ -13,6 +13,7 @@ import CuentasCorrientes from "./pages/CuentasCorrientes";
 import Devoluciones from "./pages/Devoluciones";
 import Caja from "./pages/Caja";
 import RegistroVentas from "./pages/RegistroVentas";
+import GestionUsuarios from "./pages/GestionUsuarios";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -107,6 +108,16 @@ function AppRoutes() {
           <ProtectedRoute adminOnly>
             <AppLayout>
               <RegistroVentas />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gestion-usuarios"
+        element={
+          <ProtectedRoute adminOnly>
+            <AppLayout>
+              <GestionUsuarios />
             </AppLayout>
           </ProtectedRoute>
         }
