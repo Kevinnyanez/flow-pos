@@ -132,8 +132,8 @@ export function POSProvider({ children }: { children: ReactNode }) {
           .select('role')
           .eq('user_id', authUser.id)
           .maybeSingle()
-          .then(({ data }) => {
-            if (!data) return;
+          .then(({ data, error }) => {
+            if (error || !data) return;
             const appRole = data.role as 'admin' | 'moderator' | 'user';
             const mappedRole: UserRole = appRole === 'admin' ? 'admin' : 'user';
             setCurrentUser((prev) =>
@@ -145,9 +145,6 @@ export function POSProvider({ children }: { children: ReactNode }) {
                     role: mappedRole,
                   }
             );
-          })
-          .catch(() => {
-            // ignore
           });
       }, 0);
     });
@@ -173,8 +170,8 @@ export function POSProvider({ children }: { children: ReactNode }) {
             .select('role')
             .eq('user_id', authUser.id)
             .maybeSingle()
-            .then(({ data }) => {
-              if (!data) return;
+            .then(({ data, error }) => {
+              if (error || !data) return;
               const appRole = data.role as 'admin' | 'moderator' | 'user';
               const mappedRole: UserRole = appRole === 'admin' ? 'admin' : 'user';
               setCurrentUser((prev) =>
@@ -186,9 +183,6 @@ export function POSProvider({ children }: { children: ReactNode }) {
                       role: mappedRole,
                     }
               );
-            })
-            .catch(() => {
-              // ignore
             });
         }, 0);
       })
@@ -526,6 +520,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
       value={{
         currentUser,
         setCurrentUser,
+        authInitialized,
         products,
         setProducts,
         sales,
