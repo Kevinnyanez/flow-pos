@@ -47,6 +47,38 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_redemptions: {
+        Row: {
+          amount: number
+          created_at: string
+          credit_id: string
+          description: string | null
+          id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          credit_id: string
+          description?: string | null
+          id?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          credit_id?: string
+          description?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_redemptions_credit_id_fkey"
+            columns: ["credit_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_accounts: {
         Row: {
           created_at: string
@@ -85,6 +117,63 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      customer_credits: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_name: string
+          customer_phone: string | null
+          id: string
+          notes: string | null
+          origin_product_id: string | null
+          origin_sale_id: string | null
+          remaining_amount: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          customer_name: string
+          customer_phone?: string | null
+          id?: string
+          notes?: string | null
+          origin_product_id?: string | null
+          origin_sale_id?: string | null
+          remaining_amount: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string | null
+          id?: string
+          notes?: string | null
+          origin_product_id?: string | null
+          origin_sale_id?: string | null
+          remaining_amount?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credits_origin_product_id_fkey"
+            columns: ["origin_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credits_origin_sale_id_fkey"
+            columns: ["origin_sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       debt_items: {
         Row: {
