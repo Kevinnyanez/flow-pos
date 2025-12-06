@@ -215,29 +215,50 @@ export type Database = {
       }
       products: {
         Row: {
+          brand: string | null
+          category: string | null
           code: string
+          color: string | null
           created_at: string
+          gender: string | null
           id: string
+          material: string | null
+          model: string | null
           name: string
           price: number
+          size: string | null
           stock: number
           updated_at: string
         }
         Insert: {
+          brand?: string | null
+          category?: string | null
           code: string
+          color?: string | null
           created_at?: string
+          gender?: string | null
           id?: string
+          material?: string | null
+          model?: string | null
           name: string
           price: number
+          size?: string | null
           stock?: number
           updated_at?: string
         }
         Update: {
+          brand?: string | null
+          category?: string | null
           code?: string
+          color?: string | null
           created_at?: string
+          gender?: string | null
           id?: string
+          material?: string | null
+          model?: string | null
           name?: string
           price?: number
+          size?: string | null
           stock?: number
           updated_at?: string
         }
@@ -369,7 +390,15 @@ export type Database = {
       account_status: "al-dia" | "deuda" | "condicional"
       app_role: "admin" | "moderator" | "user"
       debt_status: "pendiente" | "parcial" | "pagado"
-      payment_method: "efectivo" | "debito" | "credito"
+      payment_method:
+        | "efectivo"
+        | "debito"
+        | "credito"
+        | "transferencia"
+        | "mercado_pago"
+        | "bna"
+        | "dni"
+        | "otro"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -500,7 +529,16 @@ export const Constants = {
       account_status: ["al-dia", "deuda", "condicional"],
       app_role: ["admin", "moderator", "user"],
       debt_status: ["pendiente", "parcial", "pagado"],
-      payment_method: ["efectivo", "debito", "credito"],
+      payment_method: [
+        "efectivo",
+        "debito",
+        "credito",
+        "transferencia",
+        "mercado_pago",
+        "bna",
+        "dni",
+        "otro",
+      ],
     },
   },
 } as const
