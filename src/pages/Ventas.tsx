@@ -17,7 +17,7 @@ export default function Ventas() {
   const { products, addSale, currentUser, customerAccounts } = usePOS();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'debito' | 'credito'>('efectivo');
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro'>('efectivo');
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -190,7 +190,7 @@ export default function Ventas() {
                       <label className="text-sm font-medium mb-2 block">
                         Método de Pago
                       </label>
-                      <Select value={paymentMethod} onValueChange={(value: 'efectivo' | 'debito' | 'credito') => setPaymentMethod(value)}>
+                      <Select value={paymentMethod} onValueChange={(value: 'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro') => setPaymentMethod(value)}>
                         <SelectTrigger className="rounded-xl">
                           <SelectValue />
                         </SelectTrigger>
@@ -198,6 +198,11 @@ export default function Ventas() {
                           <SelectItem value="efectivo">Efectivo</SelectItem>
                           <SelectItem value="debito">Tarjeta de Débito</SelectItem>
                           <SelectItem value="credito">Tarjeta de Crédito</SelectItem>
+                          <SelectItem value="transferencia">Transferencia</SelectItem>
+                          <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
+                          <SelectItem value="bna">BNA+</SelectItem>
+                          <SelectItem value="dni">Cuenta DNI</SelectItem>
+                          <SelectItem value="otro">Otro</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

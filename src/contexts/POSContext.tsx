@@ -15,9 +15,16 @@ export interface Product {
   code: string;
   price: number;
   stock: number;
+  size?: string;
+  color?: string;
+  brand?: string;
+  model?: string;
+  category?: string;
+  material?: string;
+  gender?: string;
 }
 
-export type PaymentMethod = 'efectivo' | 'debito' | 'credito';
+export type PaymentMethod = 'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro';
 
 export interface Sale {
   id: string;
@@ -211,6 +218,13 @@ export function POSProvider({ children }: { children: ReactNode }) {
           code: p.code,
           price: Number(p.price),
           stock: p.stock ?? 0,
+          size: p.size ?? undefined,
+          color: p.color ?? undefined,
+          brand: p.brand ?? undefined,
+          model: p.model ?? undefined,
+          category: p.category ?? undefined,
+          material: p.material ?? undefined,
+          gender: p.gender ?? undefined,
         }))
       );
     };
@@ -227,6 +241,13 @@ export function POSProvider({ children }: { children: ReactNode }) {
         code: product.code,
         price: product.price,
         stock: product.stock,
+        size: product.size || null,
+        color: product.color || null,
+        brand: product.brand || null,
+        model: product.model || null,
+        category: product.category || null,
+        material: product.material || null,
+        gender: product.gender || null,
       })
       .select('*')
       .single()
@@ -239,6 +260,13 @@ export function POSProvider({ children }: { children: ReactNode }) {
           code: data.code,
           price: Number(data.price),
           stock: data.stock ?? 0,
+          size: data.size ?? undefined,
+          color: data.color ?? undefined,
+          brand: data.brand ?? undefined,
+          model: data.model ?? undefined,
+          category: data.category ?? undefined,
+          material: data.material ?? undefined,
+          gender: data.gender ?? undefined,
         };
 
         setProducts((prev) => [...prev, newProduct]);
@@ -253,6 +281,13 @@ export function POSProvider({ children }: { children: ReactNode }) {
     if (product.code !== undefined) payload.code = product.code;
     if (product.price !== undefined) payload.price = product.price;
     if (product.stock !== undefined) payload.stock = product.stock;
+    if (product.size !== undefined) payload.size = product.size || null;
+    if (product.color !== undefined) payload.color = product.color || null;
+    if (product.brand !== undefined) payload.brand = product.brand || null;
+    if (product.model !== undefined) payload.model = product.model || null;
+    if (product.category !== undefined) payload.category = product.category || null;
+    if (product.material !== undefined) payload.material = product.material || null;
+    if (product.gender !== undefined) payload.gender = product.gender || null;
 
     if (Object.keys(payload).length === 0) return;
 
