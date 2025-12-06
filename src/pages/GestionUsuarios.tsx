@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Shield, ShieldOff } from 'lucide-react';
+import { usePOS } from '@/contexts/POSContext';
 
 interface UserWithRole {
   id: string;
@@ -13,12 +14,37 @@ interface UserWithRole {
 }
 
 export default function GestionUsuarios() {
+  const { currentUser, authInitialized } = usePOS();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    const checkAdminAndLoad = async () => {
+      if (!authInitialized || !currentUser) {
+        setLoading(false);
+        return;
+      }
+
+      // Check if current user is admin
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', currentUser.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (roleData) {
+        setIsAdmin(true);
+        loadUsers();
+      } else {
+        setIsAdmin(false);
+        setLoading(false);
+      }
+    };
+
+    checkAdminAndLoad();
+  }, [currentUser, authInitialized]);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -66,6 +92,32 @@ export default function GestionUsuarios() {
 
     await loadUsers();
   };
+
+  if (!authInitialized || !currentUser) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <Card>
+          <CardContent className="py-8">
+            <div className="text-center text-muted-foreground">Cargando...</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <Card>
+          <CardContent className="py-8">
+            <div className="text-center text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8 px-4">
