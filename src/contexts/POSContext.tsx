@@ -99,7 +99,7 @@ interface POSContextType {
   addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => void;
   updateDebt: (accountId: string, debtId: string, updates: { amount?: number; description?: string }) => void;
   deleteDebt: (accountId: string, debtId: string) => void;
-  addPaymentToDebt: (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => void;
+  addPaymentToDebt: (accountId: string, debtId: string, payment: Omit<Payment, 'id'>, paymentMethod?: PaymentMethod) => void;
   deletePayment: (accountId: string, debtId: string, paymentId: string) => void;
 }
 
@@ -447,7 +447,25 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addPaymentToDebt = (accountId: string, debtId: string, payment: Omit<Payment, 'id'>) => {
+  const addPaymentToDebt = (accountId: string, debtId: string, payment: Omit<Payment, 'id'>, paymentMethod: PaymentMethod = 'efectivo') => {
+    // Find account and debt info for sale description
+    const account = customerAccounts.find(a => a.id === accountId);
+    const debt = account?.debts.find(d => d.id === debtId);
+    
+    // Register payment as a sale so it appears in Caja
+    if (account && debt) {
+      const paymentSale: Omit<Sale, 'id'> = {
+        date: payment.date,
+        items: [], // Payment, no physical items
+        total: payment.amount,
+        userId: currentUser?.id || '',
+        customerAccountId: accountId,
+        paymentMethod: paymentMethod,
+        description: `Abono de ${account.name} - ${debt.description}${payment.description ? ` (${payment.description})` : ''}`,
+      };
+      addSale(paymentSale);
+    }
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {

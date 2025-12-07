@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePOS, Product } from '@/contexts/POSContext';
+import { usePOS, Product, PaymentMethod } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,6 +40,13 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Search,
   Plus,
@@ -105,6 +112,7 @@ export default function CuentasCorrientes() {
   const [editDebtDescription, setEditDebtDescription] = useState('');
   const [newPaymentAmount, setNewPaymentAmount] = useState('');
   const [newPaymentDescription, setNewPaymentDescription] = useState('');
+  const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('efectivo');
 
   const filteredAccounts = customerAccounts.filter((account) =>
     account.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -219,9 +227,10 @@ export default function CuentasCorrientes() {
         date: new Date(),
         amount: parseFloat(newPaymentAmount),
         description: newPaymentDescription,
-      });
+      }, newPaymentMethod);
       setNewPaymentAmount('');
       setNewPaymentDescription('');
+      setNewPaymentMethod('efectivo');
       setSelectedDebtForPayment(null);
       setIsNewPaymentOpen(false);
     }
@@ -591,6 +600,24 @@ export default function CuentasCorrientes() {
                                       value={newPaymentAmount}
                                       onChange={(e) => setNewPaymentAmount(e.target.value)}
                                     />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="payment-method">Método de Pago</Label>
+                                    <Select value={newPaymentMethod} onValueChange={(value) => setNewPaymentMethod(value as PaymentMethod)}>
+                                      <SelectTrigger className="rounded-xl">
+                                        <SelectValue placeholder="Seleccionar método" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="efectivo">Efectivo</SelectItem>
+                                        <SelectItem value="debito">Débito</SelectItem>
+                                        <SelectItem value="credito">Crédito</SelectItem>
+                                        <SelectItem value="transferencia">Transferencia</SelectItem>
+                                        <SelectItem value="mercado_pago">Mercado Pago</SelectItem>
+                                        <SelectItem value="bna">BNA</SelectItem>
+                                        <SelectItem value="dni">DNI</SelectItem>
+                                        <SelectItem value="otro">Otro</SelectItem>
+                                      </SelectContent>
+                                    </Select>
                                   </div>
                                   <div>
                                     <Label htmlFor="payment-description">Descripción (opcional)</Label>
