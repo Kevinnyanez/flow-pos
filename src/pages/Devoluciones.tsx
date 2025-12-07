@@ -98,6 +98,12 @@ export default function Devoluciones() {
 
     const difference = replacement.price - oldProduct.price;
 
+    // Helper to check if a string is a valid UUID
+    const isValidUUID = (str: string) => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(str);
+    };
+
     // If there's credit (customer gets money back), save it to the database
     if (difference < 0 && customerName.trim()) {
       const { error } = await supabase.from('customer_credits').insert({
@@ -105,8 +111,8 @@ export default function Devoluciones() {
         customer_phone: customerPhone.trim() || null,
         amount: Math.abs(difference),
         remaining_amount: Math.abs(difference),
-        origin_sale_id: sale.id,
-        origin_product_id: oldProduct.id,
+        origin_sale_id: isValidUUID(sale.id) ? sale.id : null,
+        origin_product_id: isValidUUID(oldProduct.id) ? oldProduct.id : null,
         status: 'activo',
         notes: `Cambio de ${oldProduct.name} por ${replacement.name}`
       });
@@ -263,7 +269,7 @@ export default function Devoluciones() {
                   <SelectContent>
                     {sales.map((sale) => (
                       <SelectItem key={sale.id} value={sale.id}>
-                        Venta {sale.id.slice(0, 8)}... - ${sale.total.toFixed(2)} - {new Date(sale.date).toLocaleDateString()}
+                        {sale.description ? `${sale.description} - ` : ''}${sale.total.toFixed(2)} - {new Date(sale.date).toLocaleDateString()}
                       </SelectItem>
                     ))}
                   </SelectContent>

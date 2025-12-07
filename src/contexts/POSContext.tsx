@@ -34,6 +34,7 @@ export interface Sale {
   userId: string;
   customerAccountId?: string;
   paymentMethod: PaymentMethod;
+  description?: string;
 }
 
 export interface Payment {
