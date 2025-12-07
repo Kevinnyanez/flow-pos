@@ -400,6 +400,7 @@ export type Database = {
           created_at: string
           customer_account_id: string | null
           date: string
+          description: string | null
           id: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           total: number
@@ -410,6 +411,7 @@ export type Database = {
           created_at?: string
           customer_account_id?: string | null
           date?: string
+          description?: string | null
           id?: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           total: number
@@ -420,6 +422,7 @@ export type Database = {
           created_at?: string
           customer_account_id?: string | null
           date?: string
+          description?: string | null
           id?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           total?: number

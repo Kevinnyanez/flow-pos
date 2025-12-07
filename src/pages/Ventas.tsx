@@ -18,6 +18,7 @@ export default function Ventas() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro'>('efectivo');
+  const [description, setDescription] = useState<string>('');
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -85,12 +86,14 @@ export default function Ventas() {
       userId: currentUser.id,
       customerAccountId: selectedCustomer || undefined,
       paymentMethod,
+      description: description.trim() || undefined,
     });
 
     toast.success('Venta registrada correctamente');
     setCart([]);
     setSelectedCustomer('');
     setPaymentMethod('efectivo');
+    setDescription('');
   };
 
   return (
@@ -205,6 +208,18 @@ export default function Ventas() {
                           <SelectItem value="otro">Otro</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">
+                        Descripción / Nota (opcional)
+                      </label>
+                      <Input
+                        placeholder="Ej: Posible cambio, Cliente Juan..."
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="rounded-xl"
+                      />
                     </div>
 
                     <div>
