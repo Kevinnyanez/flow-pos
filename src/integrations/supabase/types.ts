@@ -481,7 +481,7 @@ export type Database = {
     Enums: {
       account_status: "al-dia" | "deuda" | "condicional"
       app_role: "admin" | "moderator" | "user"
-      debt_status: "pendiente" | "parcial" | "pagado"
+      debt_status: "pendiente" | "deuda" | "pagado" | "cancelado"
       payment_method:
         | "efectivo"
         | "debito"
@@ -620,7 +620,7 @@ export const Constants = {
     Enums: {
       account_status: ["al-dia", "deuda", "condicional"],
       app_role: ["admin", "moderator", "user"],
-      debt_status: ["pendiente", "parcial", "pagado"],
+      debt_status: ["pendiente", "deuda", "pagado", "cancelado"],
       payment_method: [
         "efectivo",
         "debito",

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePOS, Product, PaymentMethod } from '@/contexts/POSContext';
+import { usePOS, Product, PaymentMethod, DebtStatus } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -80,6 +80,7 @@ export default function CuentasCorrientes() {
     addCustomerAccount, 
     addDebtToAccount, 
     updateDebt,
+    updateDebtStatus,
     deleteDebt,
     addPaymentToDebt,
     deletePayment,
@@ -113,6 +114,7 @@ export default function CuentasCorrientes() {
   const [newPaymentAmount, setNewPaymentAmount] = useState('');
   const [newPaymentDescription, setNewPaymentDescription] = useState('');
   const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('efectivo');
+  const [newDebtStatus, setNewDebtStatus] = useState<DebtStatus>('pendiente');
 
   const filteredAccounts = customerAccounts.filter((account) =>
     account.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -190,9 +192,11 @@ export default function CuentasCorrientes() {
         date: new Date(),
         items: cart,
         description: newDebtDescription,
+        status: newDebtStatus,
       });
       setCart([]);
       setNewDebtDescription('');
+      setNewDebtStatus('pendiente');
       setIsNewDebtOpen(false);
     }
   };
@@ -266,14 +270,16 @@ export default function CuentasCorrientes() {
     }
   };
 
-  const getDebtStatusBadge = (status: string) => {
+  const getDebtStatusBadge = (status: DebtStatus) => {
     switch (status) {
       case 'pagado':
         return <Badge variant="default" className="bg-success text-xs"><CheckCircle2 className="w-3 h-3 mr-1" />Pagado</Badge>;
       case 'pendiente':
-        return <Badge variant="destructive" className="text-xs"><AlertCircle className="w-3 h-3 mr-1" />Pendiente</Badge>;
-      case 'parcial':
-        return <Badge variant="secondary" className="text-xs"><Clock className="w-3 h-3 mr-1" />Parcial</Badge>;
+        return <Badge variant="secondary" className="text-xs"><Clock className="w-3 h-3 mr-1" />Pendiente</Badge>;
+      case 'deuda':
+        return <Badge variant="destructive" className="text-xs"><AlertCircle className="w-3 h-3 mr-1" />Deuda</Badge>;
+      case 'cancelado':
+        return <Badge variant="outline" className="text-xs text-muted-foreground"><Trash2 className="w-3 h-3 mr-1" />Cancelado</Badge>;
       default:
         return null;
     }
@@ -411,6 +417,25 @@ export default function CuentasCorrientes() {
                       />
                     </div>
 
+                    <div>
+                      <Label htmlFor="debt-status">Estado de la prenda</Label>
+                      <Select value={newDebtStatus} onValueChange={(value) => setNewDebtStatus(value as DebtStatus)}>
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Seleccionar estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pendiente">Pendiente (el cliente lo prueba)</SelectItem>
+                          <SelectItem value="deuda">Deuda (el cliente se lo lleva fiado)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {newDebtStatus === 'pendiente' 
+                          ? 'El cliente se lleva la prenda pero aún no confirma. Si cancela, el stock se recupera.'
+                          : 'El cliente confirmó la compra a crédito. El stock se descuenta.'
+                        }
+                      </p>
+                    </div>
+
                     <DialogFooter>
                       <Button variant="outline" onClick={() => {
                         setIsNewDebtOpen(false);
@@ -518,7 +543,7 @@ export default function CuentasCorrientes() {
                   <div key={debt.id} className="border rounded-lg p-4 space-y-3 hover:border-primary/50 transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-semibold">{debt.description}</h4>
                           {getDebtStatusBadge(debt.status)}
                         </div>
@@ -526,6 +551,42 @@ export default function CuentasCorrientes() {
                           <Calendar className="w-3 h-3" />
                           {format(new Date(debt.date), 'dd/MM/yyyy')}
                         </p>
+                        {/* Status change buttons */}
+                        {debt.status !== 'cancelado' && debt.status !== 'pagado' && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {debt.status === 'pendiente' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => selectedAccount && updateDebtStatus(selectedAccount, debt.id, 'deuda')}
+                                  className="h-7 text-xs"
+                                >
+                                  Confirmar Deuda
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => selectedAccount && updateDebtStatus(selectedAccount, debt.id, 'cancelado')}
+                                  className="h-7 text-xs text-muted-foreground"
+                                >
+                                  Cancelar (Devolver)
+                                </Button>
+                              </>
+                            )}
+                            {debt.status === 'deuda' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => selectedAccount && updateDebtStatus(selectedAccount, debt.id, 'pagado')}
+                                className="h-7 text-xs bg-success/10 hover:bg-success/20 text-success border-success/30"
+                              >
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                Marcar Pagado
+                              </Button>
+                            )}
+                          </div>
+                        )}
                         {debt.items && debt.items.length > 0 && (
                           <div className="mt-2 space-y-1">
                             <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">

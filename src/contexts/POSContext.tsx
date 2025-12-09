@@ -44,6 +44,8 @@ export interface Payment {
   description?: string;
 }
 
+export type DebtStatus = 'pendiente' | 'deuda' | 'pagado' | 'cancelado';
+
 export interface Debt {
   id: string;
   date: Date;
@@ -52,7 +54,7 @@ export interface Debt {
   description: string;
   paidAmount: number;
   remainingAmount: number;
-  status: 'pendiente' | 'parcial' | 'pagado';
+  status: DebtStatus;
   payments: Payment[];
 }
 
@@ -96,8 +98,9 @@ interface POSContextType {
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
   deleteCustomerAccount: (id: string) => void;
-  addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => void;
+  addDebtToAccount: (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'payments'> & { status: DebtStatus }) => void;
   updateDebt: (accountId: string, debtId: string, updates: { amount?: number; description?: string }) => void;
+  updateDebtStatus: (accountId: string, debtId: string, newStatus: DebtStatus) => void;
   deleteDebt: (accountId: string, debtId: string) => void;
   addPaymentToDebt: (accountId: string, debtId: string, payment: Omit<Payment, 'id'>, paymentMethod?: PaymentMethod) => void;
   deletePayment: (accountId: string, debtId: string, paymentId: string) => void;
@@ -323,14 +326,16 @@ export function POSProvider({ children }: { children: ReactNode }) {
     setCustomerAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const addDebtToAccount = (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'status' | 'payments'>) => {
+  const addDebtToAccount = (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'payments'> & { status: DebtStatus }) => {
     // Calculate total from items
     const calculatedAmount = debt.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
 
-    // Update stock
-    debt.items.forEach(({ product, quantity }) => {
-      updateProduct(product.id, { stock: product.stock - quantity });
-    });
+    // Update stock for pendiente or deuda (item is taken by customer)
+    if (debt.status === 'pendiente' || debt.status === 'deuda') {
+      debt.items.forEach(({ product, quantity }) => {
+        updateProduct(product.id, { stock: product.stock - quantity });
+      });
+    }
 
     setCustomerAccounts((prev) =>
       prev.map((account) => {
@@ -341,17 +346,21 @@ export function POSProvider({ children }: { children: ReactNode }) {
             amount: calculatedAmount,
             paidAmount: 0,
             remainingAmount: calculatedAmount,
-            status: 'pendiente',
             payments: [],
           };
 
           const updatedDebts = [...account.debts, newDebt];
-          const newTotalDebt = account.totalDebt + calculatedAmount;
-          const newTotalRemaining = account.totalRemaining + calculatedAmount;
+          // Only count non-cancelled debts for totals
+          const activeDebts = updatedDebts.filter(d => d.status !== 'cancelado');
+          const newTotalDebt = activeDebts.reduce((sum, d) => sum + d.amount, 0);
+          const newTotalRemaining = activeDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
 
           let newStatus: CustomerAccount['status'] = 'deuda';
           if (newTotalRemaining === 0) {
             newStatus = 'al-dia';
+          }
+          if (updatedDebts.some(d => d.status === 'pendiente')) {
+            newStatus = 'condicional';
           }
 
           return {
@@ -377,30 +386,26 @@ export function POSProvider({ children }: { children: ReactNode }) {
               const newAmount = updates.amount !== undefined ? updates.amount : debt.amount;
               const newRemainingAmount = Math.max(0, newAmount - debt.paidAmount);
 
-              let newStatus: Debt['status'] = 'parcial';
-              if (newRemainingAmount === 0) {
-                newStatus = 'pagado';
-              } else if (debt.paidAmount === 0) {
-                newStatus = 'pendiente';
-              }
-
               return {
                 ...debt,
                 ...(updates.amount !== undefined && { amount: newAmount }),
                 ...(updates.description !== undefined && { description: updates.description }),
                 remainingAmount: newRemainingAmount,
-                status: newStatus,
               };
             }
             return debt;
           });
 
-          const newTotalDebt = updatedDebts.reduce((sum, debt) => sum + debt.amount, 0);
-          const newTotalRemaining = updatedDebts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+          const activeDebts = updatedDebts.filter(d => d.status !== 'cancelado');
+          const newTotalDebt = activeDebts.reduce((sum, debt) => sum + debt.amount, 0);
+          const newTotalRemaining = activeDebts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
 
           let newStatus: CustomerAccount['status'] = 'deuda';
           if (newTotalRemaining === 0) {
             newStatus = 'al-dia';
+          }
+          if (updatedDebts.some(d => d.status === 'pendiente')) {
+            newStatus = 'condicional';
           }
 
           return {
@@ -409,6 +414,73 @@ export function POSProvider({ children }: { children: ReactNode }) {
             totalDebt: newTotalDebt,
             totalRemaining: newTotalRemaining,
             status: newStatus,
+            lastMovementDate: new Date(),
+          };
+        }
+        return account;
+      })
+    );
+  };
+
+  const updateDebtStatus = (accountId: string, debtId: string, newStatus: DebtStatus) => {
+    setCustomerAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id === accountId) {
+          const debt = account.debts.find(d => d.id === debtId);
+          if (!debt) return account;
+
+          const oldStatus = debt.status;
+
+          // Handle stock changes based on status transitions
+          // Cancelado: restore stock if coming from pendiente/deuda
+          if (newStatus === 'cancelado' && (oldStatus === 'pendiente' || oldStatus === 'deuda')) {
+            debt.items.forEach(({ product, quantity }) => {
+              const currentProduct = products.find(p => p.id === product.id);
+              if (currentProduct) {
+                updateProduct(product.id, { stock: currentProduct.stock + quantity });
+              }
+            });
+          }
+          
+          // Pagado from pendiente/deuda: stock already decreased, just update status
+          // No stock change needed
+
+          const updatedDebts = account.debts.map((d) => {
+            if (d.id === debtId) {
+              // If pagado, set paidAmount = amount and remainingAmount = 0
+              if (newStatus === 'pagado') {
+                return {
+                  ...d,
+                  status: newStatus,
+                  paidAmount: d.amount,
+                  remainingAmount: 0,
+                };
+              }
+              return { ...d, status: newStatus };
+            }
+            return d;
+          });
+
+          const activeDebts = updatedDebts.filter(d => d.status !== 'cancelado');
+          const newTotalDebt = activeDebts.reduce((sum, d) => sum + d.amount, 0);
+          const newTotalPaid = activeDebts.reduce((sum, d) => sum + d.paidAmount, 0);
+          const newTotalRemaining = activeDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
+
+          let accountStatus: CustomerAccount['status'] = 'deuda';
+          if (newTotalRemaining === 0) {
+            accountStatus = 'al-dia';
+          }
+          if (updatedDebts.some(d => d.status === 'pendiente')) {
+            accountStatus = 'condicional';
+          }
+
+          return {
+            ...account,
+            debts: updatedDebts,
+            totalDebt: newTotalDebt,
+            totalPaid: newTotalPaid,
+            totalRemaining: newTotalRemaining,
+            status: accountStatus,
             lastMovementDate: new Date(),
           };
         }
@@ -479,11 +551,12 @@ export function POSProvider({ children }: { children: ReactNode }) {
               const newPaidAmount = debt.paidAmount + payment.amount;
               const newRemainingAmount = Math.max(0, debt.amount - newPaidAmount);
 
-              let newStatus: Debt['status'] = 'parcial';
+              // Keep status as deuda if still has remaining, pagado if fully paid
+              let newStatus: DebtStatus = debt.status;
               if (newRemainingAmount === 0) {
                 newStatus = 'pagado';
-              } else if (newPaidAmount === 0) {
-                newStatus = 'pendiente';
+              } else if (debt.status === 'pendiente' || debt.status === 'deuda') {
+                newStatus = 'deuda'; // After payment, it becomes deuda (confirmed purchase)
               }
 
               return {
@@ -529,11 +602,11 @@ export function POSProvider({ children }: { children: ReactNode }) {
               const newPaidAmount = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
               const newRemainingAmount = Math.max(0, debt.amount - newPaidAmount);
 
-              let newStatus: Debt['status'] = 'parcial';
+              let newStatus: DebtStatus = debt.status;
               if (newRemainingAmount === 0) {
                 newStatus = 'pagado';
-              } else if (newPaidAmount === 0) {
-                newStatus = 'pendiente';
+              } else if (newPaidAmount === 0 && (debt.status === 'pagado' || debt.status === 'deuda')) {
+                newStatus = 'deuda';
               }
 
               return {
@@ -592,6 +665,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
         deleteCustomerAccount,
         addDebtToAccount,
         updateDebt,
+        updateDebtStatus,
         deleteDebt,
         addPaymentToDebt,
         deletePayment,
