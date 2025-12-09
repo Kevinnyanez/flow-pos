@@ -19,6 +19,8 @@ export default function Ventas() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro'>('efectivo');
   const [description, setDescription] = useState<string>('');
+  const [adjustment, setAdjustment] = useState<number>(0);
+  const [manualTotal, setManualTotal] = useState<string>('');
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -64,8 +66,16 @@ export default function Ventas() {
     setCart(cart.filter((item) => item.product.id !== productId));
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  };
+
+  const calculateTotal = () => {
+    if (manualTotal !== '') {
+      const parsed = parseFloat(manualTotal);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return calculateSubtotal() + adjustment;
   };
 
   const handleCheckout = () => {
@@ -94,6 +104,8 @@ export default function Ventas() {
     setSelectedCustomer('');
     setPaymentMethod('efectivo');
     setDescription('');
+    setAdjustment(0);
+    setManualTotal('');
   };
 
   return (
@@ -241,11 +253,47 @@ export default function Ventas() {
                       </Select>
                     </div>
 
-                    <div className="flex items-center justify-between py-4 border-t border-border">
-                      <span className="text-lg font-medium">Total:</span>
-                      <span className="text-3xl font-bold text-primary">
-                        ${calculateTotal().toFixed(2)}
-                      </span>
+                    <div className="space-y-3 pt-4 border-t border-border">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal:</span>
+                        <span className="font-medium">${calculateSubtotal().toFixed(2)}</span>
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          Descuento (-) / Recargo (+)
+                        </label>
+                        <Input
+                          type="number"
+                          placeholder="Ej: -500 o 200"
+                          value={adjustment || ''}
+                          onChange={(e) => {
+                            setAdjustment(parseFloat(e.target.value) || 0);
+                            setManualTotal('');
+                          }}
+                          className="rounded-xl"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          Total manual (opcional)
+                        </label>
+                        <Input
+                          type="number"
+                          placeholder="Modificar total directamente"
+                          value={manualTotal}
+                          onChange={(e) => setManualTotal(e.target.value)}
+                          className="rounded-xl"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between py-4 border-t border-border">
+                        <span className="text-lg font-medium">Total:</span>
+                        <span className="text-3xl font-bold text-primary">
+                          ${calculateTotal().toFixed(2)}
+                        </span>
+                      </div>
                     </div>
 
                     <Button
