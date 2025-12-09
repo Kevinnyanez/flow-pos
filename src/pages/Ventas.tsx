@@ -19,8 +19,9 @@ export default function Ventas() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro'>('efectivo');
   const [description, setDescription] = useState<string>('');
-  const [adjustment, setAdjustment] = useState<number>(0);
-  const [manualTotal, setManualTotal] = useState<string>('');
+  const [discountPercent, setDiscountPercent] = useState<number>(0);
+  const [surchargePercent, setSurchargePercent] = useState<number>(0);
+  const [roundUp, setRoundUp] = useState<boolean>(false);
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -71,11 +72,16 @@ export default function Ventas() {
   };
 
   const calculateTotal = () => {
-    if (manualTotal !== '') {
-      const parsed = parseFloat(manualTotal);
-      return isNaN(parsed) ? 0 : parsed;
+    const subtotal = calculateSubtotal();
+    const discountAmount = subtotal * (discountPercent / 100);
+    const surchargeAmount = subtotal * (surchargePercent / 100);
+    let total = subtotal - discountAmount + surchargeAmount;
+    
+    if (roundUp) {
+      total = Math.ceil(total / 100) * 100;
     }
-    return calculateSubtotal() + adjustment;
+    
+    return total;
   };
 
   const handleCheckout = () => {
@@ -104,8 +110,9 @@ export default function Ventas() {
     setSelectedCustomer('');
     setPaymentMethod('efectivo');
     setDescription('');
-    setAdjustment(0);
-    setManualTotal('');
+    setDiscountPercent(0);
+    setSurchargePercent(0);
+    setRoundUp(false);
   };
 
   return (
@@ -258,34 +265,47 @@ export default function Ventas() {
                         <span className="text-muted-foreground">Subtotal:</span>
                         <span className="font-medium">${calculateSubtotal().toFixed(2)}</span>
                       </div>
-                      
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">
-                          Descuento (-) / Recargo (+)
-                        </label>
-                        <Input
-                          type="number"
-                          placeholder="Ej: -500 o 200"
-                          value={adjustment || ''}
-                          onChange={(e) => {
-                            setAdjustment(parseFloat(e.target.value) || 0);
-                            setManualTotal('');
-                          }}
-                          className="rounded-xl"
-                        />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">
+                            Descuento %
+                          </label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            placeholder="0"
+                            value={discountPercent || ''}
+                            onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">
+                            Recargo %
+                          </label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={surchargePercent || ''}
+                            onChange={(e) => setSurchargePercent(parseFloat(e.target.value) || 0)}
+                            className="rounded-xl"
+                          />
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">
-                          Total manual (opcional)
-                        </label>
-                        <Input
-                          type="number"
-                          placeholder="Modificar total directamente"
-                          value={manualTotal}
-                          onChange={(e) => setManualTotal(e.target.value)}
-                          className="rounded-xl"
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="roundUp"
+                          checked={roundUp}
+                          onChange={(e) => setRoundUp(e.target.checked)}
+                          className="h-4 w-4 rounded border-border"
                         />
+                        <label htmlFor="roundUp" className="text-sm font-medium">
+                          Redondear hacia arriba (centenas)
+                        </label>
                       </div>
 
                       <div className="flex items-center justify-between py-4 border-t border-border">
