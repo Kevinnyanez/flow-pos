@@ -318,6 +318,76 @@ export function POSProvider({ children }: { children: ReactNode }) {
     }
   }, [products, authInitialized]);
 
+  // Load sales from database
+  useEffect(() => {
+    const loadSales = async () => {
+      const { data: salesData, error: salesError } = await supabase
+        .from('sales')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (salesError || !salesData) return;
+
+      const { data: saleItemsData } = await supabase
+        .from('sale_items')
+        .select('*');
+
+      const loadedSales: Sale[] = salesData.map((sale: any) => {
+        const items = (saleItemsData || [])
+          .filter((item: any) => item.sale_id === sale.id)
+          .map((item: any) => {
+            const product = products.find(p => p.id === item.product_id);
+            return {
+              product: product || { id: item.product_id, name: 'Producto eliminado', code: '', price: item.unit_price, stock: 0 },
+              quantity: item.quantity,
+            };
+          });
+
+        return {
+          id: sale.id,
+          date: new Date(sale.date),
+          items,
+          total: Number(sale.total),
+          userId: sale.user_id || '',
+          customerAccountId: sale.customer_account_id || undefined,
+          paymentMethod: sale.payment_method as PaymentMethod,
+          description: sale.description || undefined,
+        };
+      });
+
+      setSales(loadedSales);
+    };
+
+    if (products.length > 0 || authInitialized) {
+      void loadSales();
+    }
+  }, [products, authInitialized]);
+
+  // Load cash registers from database
+  useEffect(() => {
+    const loadCashRegisters = async () => {
+      const { data, error } = await supabase
+        .from('cash_registers')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (error || !data) return;
+
+      setCashRegisters(
+        data.map((cr: any) => ({
+          id: cr.id,
+          date: new Date(cr.date),
+          openingBalance: Number(cr.opening_balance),
+          closingBalance: Number(cr.closing_balance),
+          totalSales: Number(cr.total_sales),
+          userId: cr.user_id || '',
+        }))
+      );
+    };
+
+    void loadCashRegisters();
+  }, []);
+
 
   const addProduct = (product: Omit<Product, 'id'>) => {
     supabase
@@ -385,13 +455,54 @@ export function POSProvider({ children }: { children: ReactNode }) {
     void supabase.from('products').delete().eq('id', id);
   };
 
-  const addSale = (sale: Omit<Sale, 'id'>) => {
-    const newSale = { ...sale, id: Date.now().toString() };
-    setSales((prev) => [...prev, newSale]);
+  const addSale = async (sale: Omit<Sale, 'id'>) => {
+    // Insert sale to database
+    const { data: saleData, error: saleError } = await supabase
+      .from('sales')
+      .insert({
+        date: sale.date.toISOString(),
+        total: sale.total,
+        user_id: sale.userId || null,
+        customer_account_id: sale.customerAccountId || null,
+        payment_method: sale.paymentMethod,
+        description: sale.description || null,
+      })
+      .select('*')
+      .single();
 
-    // Update stock
+    if (saleError || !saleData) return;
+
+    // Insert sale items
+    if (sale.items.length > 0) {
+      const saleItemsToInsert = sale.items.map(item => ({
+        sale_id: saleData.id,
+        product_id: item.product.id,
+        quantity: item.quantity,
+        unit_price: item.product.price,
+      }));
+
+      await supabase.from('sale_items').insert(saleItemsToInsert);
+    }
+
+    const newSale: Sale = {
+      id: saleData.id,
+      date: new Date(saleData.date),
+      items: sale.items,
+      total: Number(saleData.total),
+      userId: saleData.user_id || '',
+      customerAccountId: saleData.customer_account_id || undefined,
+      paymentMethod: saleData.payment_method as PaymentMethod,
+      description: saleData.description || undefined,
+    };
+
+    setSales((prev) => [newSale, ...prev]);
+
+    // Update stock for each item
     sale.items.forEach(({ product, quantity }) => {
-      updateProduct(product.id, { stock: product.stock - quantity });
+      const currentProduct = products.find(p => p.id === product.id);
+      if (currentProduct) {
+        updateProduct(product.id, { stock: currentProduct.stock - quantity });
+      }
     });
   };
 
