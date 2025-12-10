@@ -235,6 +235,88 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
     void loadProducts();
   }, []);
+  // Load customer accounts from database
+  useEffect(() => {
+    const loadCustomerAccounts = async () => {
+      const { data: accountsData, error: accountsError } = await supabase
+        .from('customer_accounts')
+        .select('*')
+        .order('name');
+
+      if (accountsError || !accountsData) return;
+
+      // Load all debts with their items and payments
+      const { data: debtsData } = await supabase
+        .from('debts')
+        .select('*')
+        .order('date', { ascending: false });
+
+      const { data: debtItemsData } = await supabase
+        .from('debt_items')
+        .select('*');
+
+      const { data: paymentsData } = await supabase
+        .from('payments')
+        .select('*')
+        .order('date', { ascending: false });
+
+      const accounts: CustomerAccount[] = accountsData.map((acc: any) => {
+        const accountDebts = (debtsData || [])
+          .filter((d: any) => d.customer_account_id === acc.id)
+          .map((debt: any) => {
+            const items = (debtItemsData || [])
+              .filter((item: any) => item.debt_id === debt.id)
+              .map((item: any) => {
+                const product = products.find(p => p.id === item.product_id);
+                return {
+                  product: product || { id: item.product_id, name: 'Producto eliminado', code: '', price: item.unit_price, stock: 0 },
+                  quantity: item.quantity,
+                };
+              });
+
+            const debtPayments = (paymentsData || [])
+              .filter((p: any) => p.debt_id === debt.id)
+              .map((p: any) => ({
+                id: p.id,
+                date: new Date(p.date),
+                amount: Number(p.amount),
+                description: p.description || undefined,
+              }));
+
+            return {
+              id: debt.id,
+              date: new Date(debt.date),
+              items,
+              amount: Number(debt.amount),
+              description: debt.description,
+              paidAmount: Number(debt.paid_amount),
+              remainingAmount: Number(debt.remaining_amount),
+              status: debt.status as DebtStatus,
+              payments: debtPayments,
+            };
+          });
+
+        return {
+          id: acc.id,
+          name: acc.name,
+          status: acc.status as CustomerAccount['status'],
+          totalDebt: Number(acc.total_debt),
+          totalPaid: Number(acc.total_paid),
+          totalRemaining: Number(acc.total_remaining),
+          lastMovementDate: acc.last_movement_at ? new Date(acc.last_movement_at) : undefined,
+          debts: accountDebts,
+          notes: acc.notes || undefined,
+        };
+      });
+
+      setCustomerAccounts(accounts);
+    };
+
+    // Wait for products to be loaded before loading accounts
+    if (products.length > 0 || authInitialized) {
+      void loadCustomerAccounts();
+    }
+  }, [products, authInitialized]);
 
 
   const addProduct = (product: Omit<Product, 'id'>) => {
@@ -313,20 +395,61 @@ export function POSProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const addCustomerAccount = (account: Omit<CustomerAccount, 'id'>) => {
-    const newAccount = { ...account, id: Date.now().toString() };
+  const addCustomerAccount = async (account: Omit<CustomerAccount, 'id'>) => {
+    const { data, error } = await supabase
+      .from('customer_accounts')
+      .insert({
+        name: account.name,
+        status: account.status,
+        total_debt: account.totalDebt,
+        total_paid: account.totalPaid,
+        total_remaining: account.totalRemaining,
+        last_movement_at: account.lastMovementDate?.toISOString() || null,
+        notes: account.notes || null,
+      })
+      .select('*')
+      .single();
+
+    if (error || !data) return;
+
+    const newAccount: CustomerAccount = {
+      id: data.id,
+      name: data.name,
+      status: data.status as CustomerAccount['status'],
+      totalDebt: Number(data.total_debt),
+      totalPaid: Number(data.total_paid),
+      totalRemaining: Number(data.total_remaining),
+      lastMovementDate: data.last_movement_at ? new Date(data.last_movement_at) : undefined,
+      debts: [],
+      notes: data.notes || undefined,
+    };
+
     setCustomerAccounts((prev) => [...prev, newAccount]);
   };
 
-  const updateCustomerAccount = (id: string, account: Partial<CustomerAccount>) => {
+  const updateCustomerAccount = async (id: string, account: Partial<CustomerAccount>) => {
     setCustomerAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...account } : a)));
+
+    const payload: Record<string, unknown> = {};
+    if (account.name !== undefined) payload.name = account.name;
+    if (account.status !== undefined) payload.status = account.status;
+    if (account.totalDebt !== undefined) payload.total_debt = account.totalDebt;
+    if (account.totalPaid !== undefined) payload.total_paid = account.totalPaid;
+    if (account.totalRemaining !== undefined) payload.total_remaining = account.totalRemaining;
+    if (account.lastMovementDate !== undefined) payload.last_movement_at = account.lastMovementDate?.toISOString() || null;
+    if (account.notes !== undefined) payload.notes = account.notes || null;
+
+    if (Object.keys(payload).length === 0) return;
+
+    await supabase.from('customer_accounts').update(payload).eq('id', id);
   };
 
-  const deleteCustomerAccount = (id: string) => {
+  const deleteCustomerAccount = async (id: string) => {
     setCustomerAccounts((prev) => prev.filter((a) => a.id !== id));
+    await supabase.from('customer_accounts').delete().eq('id', id);
   };
 
-  const addDebtToAccount = (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'payments'> & { status: DebtStatus }) => {
+  const addDebtToAccount = async (accountId: string, debt: Omit<Debt, 'id' | 'amount' | 'paidAmount' | 'remainingAmount' | 'payments'> & { status: DebtStatus }) => {
     // Calculate total from items
     const calculatedAmount = debt.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
 
@@ -337,20 +460,49 @@ export function POSProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    // Insert debt to database
+    const { data: debtData, error: debtError } = await supabase
+      .from('debts')
+      .insert({
+        customer_account_id: accountId,
+        date: debt.date.toISOString(),
+        description: debt.description,
+        amount: calculatedAmount,
+        paid_amount: 0,
+        remaining_amount: calculatedAmount,
+        status: debt.status,
+      })
+      .select('*')
+      .single();
+
+    if (debtError || !debtData) return;
+
+    // Insert debt items
+    const debtItemsToInsert = debt.items.map(item => ({
+      debt_id: debtData.id,
+      product_id: item.product.id,
+      quantity: item.quantity,
+      unit_price: item.product.price,
+    }));
+
+    await supabase.from('debt_items').insert(debtItemsToInsert);
+
+    const newDebt: Debt = {
+      id: debtData.id,
+      date: new Date(debtData.date),
+      items: debt.items,
+      amount: calculatedAmount,
+      description: debtData.description,
+      paidAmount: 0,
+      remainingAmount: calculatedAmount,
+      status: debtData.status as DebtStatus,
+      payments: [],
+    };
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
-          const newDebt: Debt = {
-            ...debt,
-            id: Date.now().toString(),
-            amount: calculatedAmount,
-            paidAmount: 0,
-            remainingAmount: calculatedAmount,
-            payments: [],
-          };
-
           const updatedDebts = [...account.debts, newDebt];
-          // Only count non-cancelled debts for totals
           const activeDebts = updatedDebts.filter(d => d.status !== 'cancelado');
           const newTotalDebt = activeDebts.reduce((sum, d) => sum + d.amount, 0);
           const newTotalRemaining = activeDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
@@ -362,6 +514,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
           if (updatedDebts.some(d => d.status === 'pendiente')) {
             newStatus = 'condicional';
           }
+
+          // Update account in database
+          void supabase.from('customer_accounts').update({
+            total_debt: newTotalDebt,
+            total_remaining: newTotalRemaining,
+            status: newStatus,
+            last_movement_at: new Date().toISOString(),
+          }).eq('id', accountId);
 
           return {
             ...account,
@@ -422,39 +582,38 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const updateDebtStatus = (accountId: string, debtId: string, newStatus: DebtStatus) => {
+  const updateDebtStatus = async (accountId: string, debtId: string, newStatus: DebtStatus) => {
+    const account = customerAccounts.find(a => a.id === accountId);
+    const debt = account?.debts.find(d => d.id === debtId);
+    if (!debt) return;
+
+    const oldStatus = debt.status;
+
+    // Handle stock changes based on status transitions
+    if (newStatus === 'cancelado' && (oldStatus === 'pendiente' || oldStatus === 'deuda')) {
+      debt.items.forEach(({ product, quantity }) => {
+        const currentProduct = products.find(p => p.id === product.id);
+        if (currentProduct) {
+          updateProduct(product.id, { stock: currentProduct.stock + quantity });
+        }
+      });
+    }
+
+    // Update debt in database
+    const updatePayload: Record<string, unknown> = { status: newStatus };
+    if (newStatus === 'pagado') {
+      updatePayload.paid_amount = debt.amount;
+      updatePayload.remaining_amount = 0;
+    }
+    await supabase.from('debts').update(updatePayload).eq('id', debtId);
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
-          const debt = account.debts.find(d => d.id === debtId);
-          if (!debt) return account;
-
-          const oldStatus = debt.status;
-
-          // Handle stock changes based on status transitions
-          // Cancelado: restore stock if coming from pendiente/deuda
-          if (newStatus === 'cancelado' && (oldStatus === 'pendiente' || oldStatus === 'deuda')) {
-            debt.items.forEach(({ product, quantity }) => {
-              const currentProduct = products.find(p => p.id === product.id);
-              if (currentProduct) {
-                updateProduct(product.id, { stock: currentProduct.stock + quantity });
-              }
-            });
-          }
-          
-          // Pagado from pendiente/deuda: stock already decreased, just update status
-          // No stock change needed
-
           const updatedDebts = account.debts.map((d) => {
             if (d.id === debtId) {
-              // If pagado, set paidAmount = amount and remainingAmount = 0
               if (newStatus === 'pagado') {
-                return {
-                  ...d,
-                  status: newStatus,
-                  paidAmount: d.amount,
-                  remainingAmount: 0,
-                };
+                return { ...d, status: newStatus, paidAmount: d.amount, remainingAmount: 0 };
               }
               return { ...d, status: newStatus };
             }
@@ -474,6 +633,15 @@ export function POSProvider({ children }: { children: ReactNode }) {
             accountStatus = 'condicional';
           }
 
+          // Update account in database
+          void supabase.from('customer_accounts').update({
+            total_debt: newTotalDebt,
+            total_paid: newTotalPaid,
+            total_remaining: newTotalRemaining,
+            status: accountStatus,
+            last_movement_at: new Date().toISOString(),
+          }).eq('id', accountId);
+
           return {
             ...account,
             debts: updatedDebts,
@@ -489,7 +657,12 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const deleteDebt = (accountId: string, debtId: string) => {
+  const deleteDebt = async (accountId: string, debtId: string) => {
+    // Delete debt items first, then debt
+    await supabase.from('debt_items').delete().eq('debt_id', debtId);
+    await supabase.from('payments').delete().eq('debt_id', debtId);
+    await supabase.from('debts').delete().eq('id', debtId);
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
@@ -503,6 +676,15 @@ export function POSProvider({ children }: { children: ReactNode }) {
           if (newTotalRemaining === 0) {
             newStatus = 'al-dia';
           }
+
+          // Update account in database
+          void supabase.from('customer_accounts').update({
+            total_debt: newTotalDebt,
+            total_paid: newTotalPaid,
+            total_remaining: newTotalRemaining,
+            status: newStatus,
+            last_movement_at: new Date().toISOString(),
+          }).eq('id', accountId);
 
           return {
             ...account,
@@ -519,16 +701,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addPaymentToDebt = (accountId: string, debtId: string, payment: Omit<Payment, 'id'>, paymentMethod: PaymentMethod = 'efectivo') => {
-    // Find account and debt info for sale description
+  const addPaymentToDebt = async (accountId: string, debtId: string, payment: Omit<Payment, 'id'>, paymentMethod: PaymentMethod = 'efectivo') => {
     const account = customerAccounts.find(a => a.id === accountId);
     const debt = account?.debts.find(d => d.id === debtId);
     
-    // Register payment as a sale so it appears in Caja
     if (account && debt) {
       const paymentSale: Omit<Sale, 'id'> = {
         date: payment.date,
-        items: [], // Payment, no physical items
+        items: [],
         total: payment.amount,
         userId: currentUser?.id || '',
         customerAccountId: accountId,
@@ -538,33 +718,54 @@ export function POSProvider({ children }: { children: ReactNode }) {
       addSale(paymentSale);
     }
 
+    // Insert payment to database
+    const { data: paymentData, error } = await supabase
+      .from('payments')
+      .insert({
+        debt_id: debtId,
+        amount: payment.amount,
+        date: payment.date.toISOString(),
+        description: payment.description || null,
+      })
+      .select('*')
+      .single();
+
+    if (error || !paymentData) return;
+
+    const newPaidAmount = (debt?.paidAmount || 0) + payment.amount;
+    const newRemainingAmount = Math.max(0, (debt?.amount || 0) - newPaidAmount);
+    let newDebtStatus: DebtStatus = debt?.status || 'deuda';
+    if (newRemainingAmount === 0) {
+      newDebtStatus = 'pagado';
+    } else if (debt?.status === 'pendiente' || debt?.status === 'deuda') {
+      newDebtStatus = 'deuda';
+    }
+
+    // Update debt in database
+    await supabase.from('debts').update({
+      paid_amount: newPaidAmount,
+      remaining_amount: newRemainingAmount,
+      status: newDebtStatus,
+    }).eq('id', debtId);
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
           const updatedDebts = account.debts.map((debt) => {
             if (debt.id === debtId) {
               const newPayment: Payment = {
-                ...payment,
-                id: Date.now().toString(),
+                id: paymentData.id,
+                date: new Date(paymentData.date),
+                amount: Number(paymentData.amount),
+                description: paymentData.description || undefined,
               };
-
-              const newPaidAmount = debt.paidAmount + payment.amount;
-              const newRemainingAmount = Math.max(0, debt.amount - newPaidAmount);
-
-              // Keep status as deuda if still has remaining, pagado if fully paid
-              let newStatus: DebtStatus = debt.status;
-              if (newRemainingAmount === 0) {
-                newStatus = 'pagado';
-              } else if (debt.status === 'pendiente' || debt.status === 'deuda') {
-                newStatus = 'deuda'; // After payment, it becomes deuda (confirmed purchase)
-              }
 
               return {
                 ...debt,
                 payments: [...debt.payments, newPayment],
                 paidAmount: newPaidAmount,
                 remainingAmount: newRemainingAmount,
-                status: newStatus,
+                status: newDebtStatus,
               };
             }
             return debt;
@@ -577,6 +778,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
           if (newTotalRemaining === 0) {
             newStatus = 'al-dia';
           }
+
+          // Update account in database
+          void supabase.from('customer_accounts').update({
+            total_paid: newTotalPaid,
+            total_remaining: newTotalRemaining,
+            status: newStatus,
+            last_movement_at: new Date().toISOString(),
+          }).eq('id', accountId);
 
           return {
             ...account,
@@ -592,29 +801,42 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const deletePayment = (accountId: string, debtId: string, paymentId: string) => {
+  const deletePayment = async (accountId: string, debtId: string, paymentId: string) => {
+    // Delete payment from database
+    await supabase.from('payments').delete().eq('id', paymentId);
+
+    const account = customerAccounts.find(a => a.id === accountId);
+    const debt = account?.debts.find(d => d.id === debtId);
+    const paymentToDelete = debt?.payments.find(p => p.id === paymentId);
+    
+    const newPaidAmount = (debt?.paidAmount || 0) - (paymentToDelete?.amount || 0);
+    const newRemainingAmount = Math.max(0, (debt?.amount || 0) - newPaidAmount);
+    let newDebtStatus: DebtStatus = debt?.status || 'deuda';
+    if (newRemainingAmount === 0) {
+      newDebtStatus = 'pagado';
+    } else if (newPaidAmount === 0) {
+      newDebtStatus = 'deuda';
+    }
+
+    // Update debt in database
+    await supabase.from('debts').update({
+      paid_amount: newPaidAmount,
+      remaining_amount: newRemainingAmount,
+      status: newDebtStatus,
+    }).eq('id', debtId);
+
     setCustomerAccounts((prev) =>
       prev.map((account) => {
         if (account.id === accountId) {
           const updatedDebts = account.debts.map((debt) => {
             if (debt.id === debtId) {
               const updatedPayments = debt.payments.filter((p) => p.id !== paymentId);
-              const newPaidAmount = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
-              const newRemainingAmount = Math.max(0, debt.amount - newPaidAmount);
-
-              let newStatus: DebtStatus = debt.status;
-              if (newRemainingAmount === 0) {
-                newStatus = 'pagado';
-              } else if (newPaidAmount === 0 && (debt.status === 'pagado' || debt.status === 'deuda')) {
-                newStatus = 'deuda';
-              }
-
               return {
                 ...debt,
                 payments: updatedPayments,
                 paidAmount: newPaidAmount,
                 remainingAmount: newRemainingAmount,
-                status: newStatus,
+                status: newDebtStatus,
               };
             }
             return debt;
@@ -627,6 +849,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
           if (newTotalRemaining === 0) {
             newStatus = 'al-dia';
           }
+
+          // Update account in database
+          void supabase.from('customer_accounts').update({
+            total_paid: newTotalPaid,
+            total_remaining: newTotalRemaining,
+            status: newStatus,
+            last_movement_at: new Date().toISOString(),
+          }).eq('id', accountId);
 
           return {
             ...account,
