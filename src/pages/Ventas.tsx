@@ -83,6 +83,19 @@ export default function Ventas() {
     
     return total;
   };
+  const [searchTerm, setSearchTerm] = useState('');
+
+const filteredProducts = products.filter((p) => {
+  const term = searchTerm.toLowerCase();
+  return (
+    p.name.toLowerCase().includes(term) ||
+    p.code?.toLowerCase().includes(term) ||
+    p.category?.toLowerCase().includes(term) ||
+    p.color?.toLowerCase().includes(term)
+  );
+});
+
+  
 
   const handleCheckout = () => {
     if (cart.length === 0) {
@@ -129,7 +142,15 @@ export default function Ventas() {
               <CardTitle>Productos Disponibles</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
-              {products.map((product) => (
+            <div className="col-span-2">
+    <Input
+      placeholder="Buscar por nombre, categoría, color..."
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+      className="rounded-xl"
+    />
+  </div>
+              {filteredProducts.map((product) => (
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}

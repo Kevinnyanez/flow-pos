@@ -476,10 +476,22 @@ export function POSProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string) => {
+    // 1. borrar en Supabase
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+  
+    if (error) {
+      console.error("Error al borrar en Supabase:", error);
+      throw error; // así handleDelete lo captura
+    }
+  
+    // 2. actualizar estado local recién después
     setProducts((prev) => prev.filter((p) => p.id !== id));
-    void supabase.from('products').delete().eq('id', id);
   };
+  
 
   const addSale = async (sale: Omit<Sale, 'id'>) => {
     // Insert sale to database

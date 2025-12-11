@@ -5,6 +5,18 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -93,10 +105,18 @@ export default function Stock() {
     setIsOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    deleteProduct(id);
-    toast.success('Producto eliminado correctamente');
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteProduct(id);  // ESTA función debe borrar *permanentemente*
+  
+      toast.success('Producto eliminado correctamente');
+    } catch (error) {
+      toast.error('Error al eliminar el producto');
+      console.error(error);
+    }
   };
+  
+  
 
   const handleCloseSheet = () => {
     setIsOpen(false);
@@ -154,12 +174,12 @@ export default function Stock() {
   
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col w-full px-6">
+        <div className="mb-4">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Stock</h1>
           <p className="text-muted-foreground mt-1">Administra el inventario de prendas</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-3 mb-6">
           <Button
             variant="outline"
             className="gap-2"
@@ -375,28 +395,33 @@ export default function Stock() {
         </div>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="flex flex-col gap-4 w-full">
         {filteredProducts.map((product) => (
           <Card
-            key={product.id}
-            className="p-6 border-border/50 shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                  <Package className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">{product.name}</h3>
-                  <p className="text-sm text-muted-foreground">{product.code}</p>
-                </div>
+          key={product.id}
+          className="p-6 shadow-md"
+        >
+          <div className="space-y-3">
+            {/* Header con ícono y nombre */}
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                <Package className="h-6 w-6 text-primary" />
               </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-foreground">{product.name}</h3>
+                <p className="text-sm text-muted-foreground">{product.code}</p>
+              </div>
+            </div>
+        
+            {/* Badge de Stock - ahora separado abajo */}
+            <div>
               <Badge variant={product.stock < 10 ? 'destructive' : 'secondary'}>
                 Stock: {product.stock}
               </Badge>
             </div>
             
-            <div className="flex flex-wrap gap-1.5 mb-3">
+            {/* Badges de categoría, talle, color, etc */}
+            <div className="flex flex-wrap gap-1.5">
               {product.category && (
                 <Badge variant="outline" className="text-xs">{product.category}</Badge>
               )}
@@ -413,7 +438,8 @@ export default function Stock() {
                 <Badge variant="outline" className="text-xs">{product.brand}</Badge>
               )}
             </div>
-
+        
+            {/* Footer con precio y acciones */}
             <div className="flex items-center justify-between pt-3 border-t border-border">
               <span className="text-2xl font-bold text-primary">${product.price}</span>
               <div className="flex gap-2">
@@ -425,17 +451,40 @@ export default function Stock() {
                 >
                   <Edit className="h-4 w-4" />
                 </Button>
+                <AlertDialog>
+                <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleDelete(product.id)}
+                  
                   className="rounded-lg text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>¿Eliminar esta prenda?</AlertDialogTitle>
+      <AlertDialogDescription>
+        Esta acción no se puede deshacer. La prenda será eliminada permanentemente del inventario.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+      <AlertDialogAction
+        onClick={() => handleDelete(product.id)}   // ← tu función real
+        className="bg-red-600 hover:bg-red-700"
+      >
+        Eliminar
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
               </div>
             </div>
-          </Card>
+          </div>
+        </Card>
         ))}
       </div>
 
