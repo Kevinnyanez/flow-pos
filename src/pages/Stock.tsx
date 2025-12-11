@@ -14,8 +14,9 @@ import {
 } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Trash2, Package } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportProductsToExcel, importProductsFromExcel } from '@/lib/excel-utils';
 
 const CATEGORIES = ['Remera', 'Pantalón', 'Campera', 'Buzo', 'Camisa', 'Short', 'Vestido', 'Pollera', 'Accesorio', 'Calzado', 'Otro'];
 const SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'Único'];
@@ -103,6 +104,54 @@ export default function Stock() {
     setFormData({ name: '', code: '', price: '', stock: '', size: '', color: '', brand: '', model: '', category: '', material: '', gender: '' });
   };
 
+  const handleExportExcel = () => {
+    try {
+      exportProductsToExcel(products);
+      toast.success('Stock exportado a Excel correctamente');
+    } catch (error) {
+      toast.error('Error al exportar el stock');
+      console.error(error);
+    }
+  };
+
+  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const importedProducts = await importProductsFromExcel(file);
+      
+      if (importedProducts.length === 0) {
+        toast.error('No se encontraron productos válidos en el archivo');
+        return;
+      }
+
+      // Agregar cada producto importado
+      let added = 0;
+      let updated = 0;
+      
+      for (const product of importedProducts) {
+        const existingProduct = products.find(p => p.code === product.code);
+        if (existingProduct) {
+          await updateProduct(existingProduct.id, product);
+          updated++;
+        } else {
+          addProduct(product);
+          added++;
+        }
+      }
+
+      toast.success(`Importación completada: ${added} productos agregados, ${updated} productos actualizados`);
+      
+      // Limpiar el input
+      event.target.value = '';
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al importar el archivo Excel');
+      console.error(error);
+      event.target.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -110,16 +159,44 @@ export default function Stock() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Stock</h1>
           <p className="text-muted-foreground mt-1">Administra el inventario de prendas</p>
         </div>
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExportExcel}
+          >
+            <Download className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+          <label htmlFor="import-excel-stock">
             <Button
-              className="gap-2 shadow-md hover:shadow-lg transition-all"
-              onClick={() => setEditingProduct(null)}
+              variant="outline"
+              className="gap-2 cursor-pointer"
+              asChild
             >
-              <Plus className="h-4 w-4" />
-              Nueva Prenda
+              <span>
+                <Upload className="h-4 w-4" />
+                Importar Excel
+              </span>
             </Button>
-          </SheetTrigger>
+          </label>
+          <input
+            id="import-excel-stock"
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImportExcel}
+            className="hidden"
+          />
+          <Sheet open={isOpen} onOpenChange={setIsOpen}>
+            <SheetTrigger asChild>
+              <Button
+                className="gap-2 shadow-md hover:shadow-lg transition-all"
+                onClick={() => setEditingProduct(null)}
+              >
+                <Plus className="h-4 w-4" />
+                Nueva Prenda
+              </Button>
+            </SheetTrigger>
           <SheetContent className="sm:max-w-lg overflow-y-auto">
             <SheetHeader>
               <SheetTitle>{editingProduct ? 'Editar Prenda' : 'Nueva Prenda'}</SheetTitle>

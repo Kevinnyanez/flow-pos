@@ -92,7 +92,7 @@ interface POSContextType {
   cashRegisters: CashRegister[];
   setCashRegisters: React.Dispatch<React.SetStateAction<CashRegister[]>>;
   addProduct: (product: Omit<Product, 'id'>) => void;
-  updateProduct: (id: string, product: Partial<Product>) => void;
+  updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => void;
   addSale: (sale: Omit<Sale, 'id'>) => void;
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
@@ -429,7 +429,8 @@ export function POSProvider({ children }: { children: ReactNode }) {
       });
   };
 
-  const updateProduct = (id: string, product: Partial<Product>) => {
+  const updateProduct = async (id: string, product: Partial<Product>) => {
+    // Update local state optimistically
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...product } : p)));
 
     const payload: Record<string, unknown> = {};
@@ -447,7 +448,32 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
     if (Object.keys(payload).length === 0) return;
 
-    void supabase.from('products').update(payload).eq('id', id);
+    // Wait for database update to complete
+    const { error } = await supabase.from('products').update(payload).eq('id', id);
+    
+    if (error) {
+      console.error('Error updating product:', error);
+      // Reload products from database to sync state
+      const { data } = await supabase.from('products').select('*').eq('id', id).single();
+      if (data) {
+        setProducts((prev) => prev.map((p) => 
+          p.id === id ? {
+            id: data.id,
+            name: data.name,
+            code: data.code,
+            price: Number(data.price),
+            stock: data.stock ?? 0,
+            size: data.size ?? undefined,
+            color: data.color ?? undefined,
+            brand: data.brand ?? undefined,
+            model: data.model ?? undefined,
+            category: data.category ?? undefined,
+            material: data.material ?? undefined,
+            gender: data.gender ?? undefined,
+          } : p
+        ));
+      }
+    }
   };
 
   const deleteProduct = (id: string) => {
@@ -497,13 +523,15 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
     setSales((prev) => [newSale, ...prev]);
 
-    // Update stock for each item
-    sale.items.forEach(({ product, quantity }) => {
-      const currentProduct = products.find(p => p.id === product.id);
-      if (currentProduct) {
-        updateProduct(product.id, { stock: currentProduct.stock - quantity });
-      }
-    });
+    // Update stock for each item - wait for all updates to complete
+    await Promise.all(
+      sale.items.map(async ({ product, quantity }) => {
+        const currentProduct = products.find(p => p.id === product.id);
+        if (currentProduct) {
+          await updateProduct(product.id, { stock: currentProduct.stock - quantity });
+        }
+      })
+    );
   };
 
   const addCustomerAccount = async (account: Omit<CustomerAccount, 'id'>) => {
@@ -566,9 +594,11 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
     // Update stock for pendiente or deuda (item is taken by customer)
     if (debt.status === 'pendiente' || debt.status === 'deuda') {
-      debt.items.forEach(({ product, quantity }) => {
-        updateProduct(product.id, { stock: product.stock - quantity });
-      });
+      await Promise.all(
+        debt.items.map(async ({ product, quantity }) => {
+          await updateProduct(product.id, { stock: product.stock - quantity });
+        })
+      );
     }
 
     // Insert debt to database
@@ -702,12 +732,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
     // Handle stock changes based on status transitions
     if (newStatus === 'cancelado' && (oldStatus === 'pendiente' || oldStatus === 'deuda')) {
-      debt.items.forEach(({ product, quantity }) => {
-        const currentProduct = products.find(p => p.id === product.id);
-        if (currentProduct) {
-          updateProduct(product.id, { stock: currentProduct.stock + quantity });
-        }
-      });
+      await Promise.all(
+        debt.items.map(async ({ product, quantity }) => {
+          const currentProduct = products.find(p => p.id === product.id);
+          if (currentProduct) {
+            await updateProduct(product.id, { stock: currentProduct.stock + quantity });
+          }
+        })
+      );
     }
 
     // Update debt in database

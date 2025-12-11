@@ -66,8 +66,12 @@ import {
   Minus,
   ShoppingCart,
   Package,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { exportCustomersToExcel, importCustomersFromExcel } from '@/lib/excel-utils';
 
 interface CartItem {
   product: Product;
@@ -86,6 +90,50 @@ export default function CuentasCorrientes() {
     deletePayment,
     products
   } = usePOS();
+  
+  const handleExportExcel = () => {
+    try {
+      exportCustomersToExcel(customerAccounts);
+      toast.success('Clientes exportados a Excel correctamente');
+    } catch (error) {
+      toast.error('Error al exportar los clientes');
+      console.error(error);
+    }
+  };
+
+  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const importedCustomers = await importCustomersFromExcel(file);
+      
+      if (importedCustomers.length === 0) {
+        toast.error('No se encontraron clientes válidos en el archivo');
+        return;
+      }
+
+      // Agregar cada cliente importado
+      let added = 0;
+      
+      for (const customer of importedCustomers) {
+        addCustomerAccount({
+          ...customer,
+          debts: [],
+        });
+        added++;
+      }
+
+      toast.success(`Importación completada: ${added} clientes agregados`);
+      
+      // Limpiar el input
+      event.target.value = '';
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al importar el archivo Excel');
+      console.error(error);
+      event.target.value = '';
+    }
+  };
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
@@ -863,13 +911,41 @@ export default function CuentasCorrientes() {
           <h1 className="text-3xl font-bold">Cuentas Corrientes</h1>
           <p className="text-muted-foreground">Gestión de clientes y sus deudas</p>
         </div>
-        <Dialog open={isNewAccountOpen} onOpenChange={setIsNewAccountOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <UserPlus className="w-4 h-4 mr-2" />
-              Nuevo Cliente
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExportExcel}
+          >
+            <Download className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+          <label htmlFor="import-excel-customers">
+            <Button
+              variant="outline"
+              className="gap-2 cursor-pointer"
+              asChild
+            >
+              <span>
+                <Upload className="h-4 w-4" />
+                Importar Excel
+              </span>
             </Button>
-          </DialogTrigger>
+          </label>
+          <input
+            id="import-excel-customers"
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImportExcel}
+            className="hidden"
+          />
+          <Dialog open={isNewAccountOpen} onOpenChange={setIsNewAccountOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <UserPlus className="w-4 h-4 mr-2" />
+                Nuevo Cliente
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
