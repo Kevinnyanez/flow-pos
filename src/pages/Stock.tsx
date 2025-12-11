@@ -151,7 +151,7 @@ export default function Stock() {
       event.target.value = '';
     }
   };
-
+  
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -445,6 +445,7 @@ export default function Stock() {
           <p className="text-lg text-muted-foreground">No se encontraron prendas</p>
         </Card>
       )}
+    </div>
     </div>
   );
 }

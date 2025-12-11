@@ -602,6 +602,6 @@ export default function Devoluciones() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div> 
   );
 }

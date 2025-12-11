@@ -946,43 +946,44 @@ export default function CuentasCorrientes() {
                 Nuevo Cliente
               </Button>
             </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
-              <DialogDescription>
-                Crea una nueva cuenta corriente para un cliente
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Nombre del Cliente</Label>
-                <Input
-                  id="name"
-                  placeholder="Nombre completo"
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
+                <DialogDescription>
+                  Crea una nueva cuenta corriente para un cliente
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Nombre del Cliente</Label>
+                  <Input
+                    id="name"
+                    placeholder="Nombre completo"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="notes">Notas (opcional)</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Información adicional sobre el cliente"
+                    value={newAccountNotes}
+                    onChange={(e) => setNewAccountNotes(e.target.value)}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsNewAccountOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleAddAccount}>
+                    Crear Cliente
+                  </Button>
+                </DialogFooter>
               </div>
-              <div>
-                <Label htmlFor="notes">Notas (opcional)</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Información adicional sobre el cliente"
-                  value={newAccountNotes}
-                  onChange={(e) => setNewAccountNotes(e.target.value)}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsNewAccountOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleAddAccount}>
-                  Crear Cliente
-                </Button>
-              </DialogFooter>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
