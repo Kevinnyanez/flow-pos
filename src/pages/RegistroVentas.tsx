@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { FileText, ShoppingBag } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 
 export default function RegistroVentas() {
   const { sales } = usePOS();
@@ -52,7 +53,7 @@ export default function RegistroVentas() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">${totalRevenue.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-foreground">{formatCurrency(totalRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">Ventas acumuladas</p>
           </CardContent>
         </Card>
@@ -123,7 +124,7 @@ export default function RegistroVentas() {
                                 <div key={idx} className="text-sm">
                                   {item.product.name}
                                   <span className="text-muted-foreground ml-1">
-                                    (${item.product.price})
+                                    ({formatCurrency(item.product.price)})
                                   </span>
                                 </div>
                               ))}
@@ -134,7 +135,7 @@ export default function RegistroVentas() {
                           </TableCell>
                           <TableCell>
                             <span className="text-lg font-semibold text-success">
-                              ${sale.total.toFixed(2)}
+                              {formatCurrency(sale.total)}
                             </span>
                           </TableCell>
                           <TableCell>

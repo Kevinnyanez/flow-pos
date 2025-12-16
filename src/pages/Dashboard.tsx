@@ -1,6 +1,7 @@
 import { usePOS } from '@/contexts/POSContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, ShoppingCart, Users, TrendingUp, DollarSign, AlertCircle } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
 export default function Dashboard() {
@@ -11,6 +12,7 @@ export default function Dashboard() {
   const totalSales = sales.length;
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
   const debtAccounts = customerAccounts.filter((a) => a.status === 'deuda').length;
+  const totalOutstanding = customerAccounts.reduce((sum, a) => sum + (a.totalRemaining || 0), 0);
 
   const stats = [
     {
@@ -31,11 +33,19 @@ export default function Dashboard() {
     },
     {
       title: 'Ingresos Totales',
-      value: `$${totalRevenue.toFixed(2)}`,
+      value: formatCurrency(totalRevenue),
       icon: DollarSign,
       description: 'Ventas acumuladas',
       color: 'text-success',
       bgColor: 'bg-success/10',
+    },
+    {
+      title: 'En la Calle',
+      value: formatCurrency(totalOutstanding),
+      icon: DollarSign,
+      description: `${debtAccounts} cuentas con deuda`,
+      color: 'text-destructive',
+      bgColor: 'bg-destructive/10',
     },
     {
       title: 'Cuentas con Deuda',
@@ -139,7 +149,7 @@ export default function Dashboard() {
                     <p className="font-medium text-foreground">{account.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {account.status === 'al-dia' && 'Al día'}
-                      {account.status === 'deuda' && `Deuda: $${(account.totalRemaining || 0).toFixed(2)}`}
+                      {account.status === 'deuda' && `Deuda: ${formatCurrency(account.totalRemaining || 0)}` }
                       {account.status === 'condicional' && 'Condicional'}
                     </p>
                   </div>

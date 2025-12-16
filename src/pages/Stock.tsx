@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePOS, Product } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -27,6 +28,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, Edit, Trash2, Package, Download, Upload } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { exportProductsToExcel, importProductsFromExcel } from '@/lib/excel-utils';
 
@@ -50,15 +52,23 @@ export default function Stock() {
     model: '',
     category: '',
     material: '',
+    description: '',
     gender: '',
   });
 
+  const term = searchTerm.toLowerCase();
   const filteredProducts = products.filter(
     (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.brand && p.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+      p.name.toLowerCase().includes(term) ||
+      p.code.toLowerCase().includes(term) ||
+      (p.brand && p.brand.toLowerCase().includes(term)) ||
+      (p.category && p.category.toLowerCase().includes(term)) ||
+      (p.color && p.color.toLowerCase().includes(term)) ||
+      (p.material && p.material.toLowerCase().includes(term)) ||
+      (p.model && p.model.toLowerCase().includes(term)) ||
+      (p.size && p.size.toLowerCase().includes(term)) ||
+      (p.gender && p.gender.toLowerCase().includes(term)) ||
+      (p.description && p.description.toLowerCase().includes(term))
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -74,6 +84,7 @@ export default function Stock() {
       model: formData.model || undefined,
       category: formData.category || undefined,
       material: formData.material || undefined,
+      description: formData.description || undefined,
       gender: formData.gender || undefined,
     };
 
@@ -100,6 +111,7 @@ export default function Stock() {
       model: product.model || '',
       category: product.category || '',
       material: product.material || '',
+      description: product.description || '',
       gender: product.gender || '',
     });
     setIsOpen(true);
@@ -121,7 +133,7 @@ export default function Stock() {
   const handleCloseSheet = () => {
     setIsOpen(false);
     setEditingProduct(null);
-    setFormData({ name: '', code: '', price: '', stock: '', size: '', color: '', brand: '', model: '', category: '', material: '', gender: '' });
+    setFormData({ name: '', code: '', price: '', stock: '', size: '', color: '', brand: '', model: '', category: '', material: '', description: '', gender: '' });
   };
 
   const handleExportExcel = () => {
@@ -365,6 +377,17 @@ export default function Stock() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="rounded-xl"
+                  placeholder="Breve descripción de la prenda"
+                />
+              </div>
+
               <div className="flex gap-3 pt-4">
                 <Button type="submit" className="flex-1 rounded-xl">
                   {editingProduct ? 'Actualizar' : 'Agregar'}
@@ -387,7 +410,7 @@ export default function Stock() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nombre, código, marca o categoría..."
+            placeholder="Buscar por nombre, código, marca, categoría, color, material, descripción..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 rounded-xl"
@@ -441,7 +464,7 @@ export default function Stock() {
         
             {/* Footer con precio y acciones */}
             <div className="flex items-center justify-between pt-3 border-t border-border">
-              <span className="text-2xl font-bold text-primary">${product.price}</span>
+              <span className="text-2xl font-bold text-primary">{formatCurrency(product.price)}</span>
               <div className="flex gap-2">
                 <Button
                   size="sm"

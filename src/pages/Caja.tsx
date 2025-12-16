@@ -1,6 +1,9 @@
+import { useState, useEffect } from 'react';
 import { usePOS } from '@/contexts/POSContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, TrendingUp, ShoppingCart, Calendar, CreditCard } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
   TableBody,
@@ -28,6 +31,67 @@ export default function Caja() {
   const totalTransactions = sales.length;
   const averageSale = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
+  // Calcular ganancias por día
+  const dailyMap: Record<string, number> = {};
+  sales.forEach((sale) => {
+    const d = new Date(sale.date);
+    const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    dailyMap[key] = (dailyMap[key] ?? 0) + sale.total;
+  });
+
+  const dailyRevenues = Object.entries(dailyMap)
+    .map(([date, total]) => ({ date, total }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  // Date range filter (default: last 7 days)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const defaultFrom = sevenDaysAgo.toISOString().slice(0, 10);
+
+  const [dateFrom, setDateFrom] = useState<string>(defaultFrom);
+  const [dateTo, setDateTo] = useState<string>(todayStr);
+
+  const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_users_with_roles');
+        if (error) {
+          console.warn('No se pudieron cargar usuarios:', error.message ?? error);
+          return;
+        }
+
+        const map: Record<string, string> = {};
+        (data || []).forEach((u: any) => {
+          if (u?.id) map[u.id] = u.email;
+        });
+        setUsersMap(map);
+      } catch (err) {
+        console.warn('Error al cargar usuarios:', err);
+      }
+    };
+
+    void loadUsers();
+  }, []);
+
+  const filteredDailyRevenues = dailyRevenues.filter((d) => {
+    if (!dateFrom || !dateTo) return true;
+    return d.date >= dateFrom && d.date <= dateTo;
+  });
+
+  const resetRange = () => {
+    setDateFrom(defaultFrom);
+    setDateTo(todayStr);
+  };
+
+  const getUserLabel = (userId: string) => {
+    if (!userId) return 'Sistema';
+    if (userId === currentUser?.id) return 'Yo';
+    return usersMap[userId] ?? `Usuario ${userId.slice(0, 8)}`;
+  };
+
   // Desglose por método de pago
   const cashRevenue = todaySales
     .filter((sale) => sale.paymentMethod === 'efectivo')
@@ -42,7 +106,7 @@ export default function Caja() {
   const stats = [
     {
       title: 'Caja Actual',
-      value: `$${todayRevenue.toFixed(2)}`,
+      value: formatCurrency(todayRevenue),
       icon: DollarSign,
       description: `${todaySales.length} ventas hoy`,
       color: 'text-primary',
@@ -55,22 +119,6 @@ export default function Caja() {
       description: 'Transacciones',
       color: 'text-accent',
       bgColor: 'bg-accent/10',
-    },
-    {
-      title: 'Ingresos Totales',
-      value: `$${totalRevenue.toFixed(2)}`,
-      icon: TrendingUp,
-      description: `${totalTransactions} ventas`,
-      color: 'text-success',
-      bgColor: 'bg-success/10',
-    },
-    {
-      title: 'Promedio por Venta',
-      value: `$${averageSale.toFixed(2)}`,
-      icon: Calendar,
-      description: 'Ticket promedio',
-      color: 'text-warning',
-      bgColor: 'bg-warning/10',
     },
   ];
 
@@ -117,7 +165,7 @@ export default function Caja() {
                 <span className="text-sm font-medium text-muted-foreground">Efectivo</span>
                 <DollarSign className="h-4 w-4 text-success" />
               </div>
-              <div className="text-2xl font-bold text-foreground">${cashRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(cashRevenue)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {todaySales.filter((s) => s.paymentMethod === 'efectivo').length} ventas
               </p>
@@ -127,7 +175,7 @@ export default function Caja() {
                 <span className="text-sm font-medium text-muted-foreground">Débito</span>
                 <DollarSign className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-2xl font-bold text-foreground">${debitRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(debitRevenue)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {todaySales.filter((s) => s.paymentMethod === 'debito').length} ventas
               </p>
@@ -137,11 +185,57 @@ export default function Caja() {
                 <span className="text-sm font-medium text-muted-foreground">Crédito</span>
                 <DollarSign className="h-4 w-4 text-accent" />
               </div>
-              <div className="text-2xl font-bold text-foreground">${creditRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(creditRevenue)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {todaySales.filter((s) => s.paymentMethod === 'credito').length} ventas
               </p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50 shadow-md">
+        <CardHeader>
+          <CardTitle>Ganancias por Día</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-muted-foreground">Desde</label>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-xl border p-1" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-muted-foreground">Hasta</label>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-xl border p-1" />
+            </div>
+            <div className="ml-auto flex gap-2">
+              <button type="button" className="btn" onClick={resetRange}>Últimos 7 días</button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="font-semibold">Fecha</TableHead>
+                  <TableHead className="font-semibold">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDailyRevenues.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center py-6 text-muted-foreground">No hay datos</TableCell>
+                  </TableRow>
+                ) : (
+                  filteredDailyRevenues.map((d) => (
+                    <TableRow key={d.date} className="hover:bg-muted/50 transition-colors">
+                      <TableCell>{new Date(d.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</TableCell>
+                      <TableCell>{formatCurrency(d.total)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -195,7 +289,7 @@ export default function Caja() {
                         </TableCell>
                         <TableCell>
                           <span className="text-lg font-semibold text-success">
-                            ${sale.total.toFixed(2)}
+                            {formatCurrency(sale.total)}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -211,7 +305,7 @@ export default function Caja() {
                           </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {currentUser?.id === sale.userId ? 'Yo' : `Usuario ${sale.userId}`}
+                          {getUserLabel(sale.userId)}
                         </TableCell>
                       </TableRow>
                     ))

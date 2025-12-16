@@ -21,6 +21,7 @@ export interface Product {
   model?: string;
   category?: string;
   material?: string;
+  description?: string;
   gender?: string;
 }
 
@@ -228,6 +229,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
           model: p.model ?? undefined,
           category: p.category ?? undefined,
           material: p.material ?? undefined,
+          description: p.description ?? undefined,
           gender: p.gender ?? undefined,
         }))
       );
@@ -296,13 +298,22 @@ export function POSProvider({ children }: { children: ReactNode }) {
             };
           });
 
+        // Recalculate totals and status based on debts to avoid inconsistencies
+        const activeDebts = accountDebts.filter((d) => d.status !== 'cancelado');
+        const computedTotalDebt = activeDebts.reduce((sum, d) => sum + d.amount, 0);
+        const computedTotalPaid = activeDebts.reduce((sum, d) => sum + d.paidAmount, 0);
+        const computedTotalRemaining = activeDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
+
+        let computedStatus: CustomerAccount['status'] = computedTotalRemaining > 0 ? 'deuda' : 'al-dia';
+        if (activeDebts.some((d) => d.status === 'pendiente')) computedStatus = 'condicional';
+
         return {
           id: acc.id,
           name: acc.name,
-          status: acc.status as CustomerAccount['status'],
-          totalDebt: Number(acc.total_debt),
-          totalPaid: Number(acc.total_paid),
-          totalRemaining: Number(acc.total_remaining),
+          status: computedStatus,
+          totalDebt: computedTotalDebt,
+          totalPaid: computedTotalPaid,
+          totalRemaining: computedTotalRemaining,
           lastMovementDate: acc.last_movement_at ? new Date(acc.last_movement_at) : undefined,
           debts: accountDebts,
           notes: acc.notes || undefined,

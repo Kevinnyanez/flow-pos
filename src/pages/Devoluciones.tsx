@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { RefreshCw, ArrowRight, DollarSign, CreditCard, Plus, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 
 interface CustomerCredit {
@@ -73,6 +74,7 @@ export default function Devoluciones() {
 
   const handleSelectSale = (saleId: string) => {
     setSelectedSale(saleId);
+    setProductSearch('');
     setStep(2);
   };
 
@@ -80,6 +82,28 @@ export default function Devoluciones() {
     setSelectedProduct(productId);
     setStep(3);
   };
+
+  // Search filters
+  const [saleSearch, setSaleSearch] = useState<string>('');
+  const [productSearch, setProductSearch] = useState<string>('');
+
+  const filteredSales = sales.filter((s) => {
+    const q = saleSearch.trim().toLowerCase();
+    if (!q) return true;
+    const inDesc = s.description?.toLowerCase().includes(q);
+    const inDate = new Date(s.date).toLocaleDateString().toLowerCase().includes(q);
+    const inTotal = s.total?.toString().includes(q);
+    const inProducts = s.items?.some(i => i.product.name.toLowerCase().includes(q));
+    return !!(inDesc || inDate || inTotal || inProducts);
+  });
+
+  const saleItems = sales.find((s) => s.id === selectedSale)?.items || [];
+
+  const filteredReplacementProducts = products.filter((p) => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q) || (p.code && p.code.toLowerCase().includes(q)) || (p.description && p.description.toLowerCase().includes(q));
+  });
 
   const handleComplete = async () => {
     if (!selectedProduct || !newProduct) {
@@ -123,13 +147,13 @@ export default function Devoluciones() {
         return;
       }
 
-      toast.success(`Cambio completado. Crédito de $${Math.abs(difference).toFixed(2)} registrado para ${customerName}`);
+      toast.success(`Cambio completado. Crédito de ${formatCurrency(Math.abs(difference))} registrado para ${customerName}`);
       loadCredits();
     } else if (difference < 0) {
       toast.warning('Ingresa el nombre del cliente para registrar el crédito');
       return;
     } else if (difference > 0) {
-      toast.success(`Cambio completado. Diferencia a pagar: $${difference.toFixed(2)}`);
+      toast.success(`Cambio completado. Diferencia a pagar: ${formatCurrency(difference)}`);
     } else {
       toast.success('Cambio completado sin diferencias');
     }
@@ -191,7 +215,7 @@ export default function Devoluciones() {
       return;
     }
 
-    toast.success(`Cobro de $${amount.toFixed(2)} registrado correctamente`);
+    toast.success(`Cobro de ${formatCurrency(amount)} registrado correctamente`);
     setRedemptionDialogOpen(false);
     setSelectedCredit(null);
     setRedemptionAmount('');
@@ -262,16 +286,29 @@ export default function Devoluciones() {
                 <CardDescription>Elige la venta que deseas procesar</CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="mb-3">
+                  <Label className="text-sm">Buscar Venta</Label>
+                  <Input
+                    placeholder="Buscar por descripción, fecha, total o producto..."
+                    value={saleSearch}
+                    onChange={(e) => setSaleSearch(e.target.value)}
+                    className="rounded-xl mt-2"
+                  />
+                </div>
                 <Select value={selectedSale} onValueChange={handleSelectSale} disabled={step > 1}>
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder="Selecciona una venta" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {sales.map((sale) => (
-                      <SelectItem key={sale.id} value={sale.id}>
-                        {sale.description ? `${sale.description} - ` : ''}${sale.total.toFixed(2)} - {new Date(sale.date).toLocaleDateString()}
-                      </SelectItem>
-                    ))}
+                  <SelectContent position="item">
+                    {filteredSales.length === 0 ? (
+                      <SelectItem value="__no_sales" disabled>No se encontraron ventas</SelectItem>
+                    ) : (
+                      filteredSales.map((sale) => (
+                        <SelectItem key={sale.id} value={sale.id}>
+                          {sale.description ? `${sale.description} - ` : ''}{formatCurrency(sale.total)} - {new Date(sale.date).toLocaleDateString()}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 {sales.length === 0 && (
@@ -304,7 +341,7 @@ export default function Devoluciones() {
                   <SelectContent>
                     {sale?.items.map((item) => (
                       <SelectItem key={item.product.id} value={item.product.id}>
-                        {item.product.name} - ${item.product.price} x{item.quantity}
+                        {item.product.name} - {formatCurrency(item.product.price)} x{item.quantity}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -324,16 +361,30 @@ export default function Devoluciones() {
                 <CardDescription>Elige el producto de reemplazo</CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="mb-3">
+                  <Label className="text-sm">Buscar Nuevo Producto</Label>
+                  <Input
+                    placeholder="Filtrar productos por nombre o código..."
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="rounded-xl mt-2"
+                    disabled={step !== 3}
+                  />
+                </div>
                 <Select value={newProduct} onValueChange={setNewProduct} disabled={step !== 3}>
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder="Selecciona un producto" />
                   </SelectTrigger>
                   <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name} - ${product.price}
-                      </SelectItem>
-                    ))}
+                    {filteredReplacementProducts.length === 0 ? (
+                      <SelectItem value="__no_products_replace" disabled>No se encontraron productos</SelectItem>
+                    ) : (
+                      filteredReplacementProducts.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name} - {formatCurrency(product.price)}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </CardContent>
@@ -354,7 +405,7 @@ export default function Devoluciones() {
                     <div className="rounded-xl border border-border p-4 bg-muted/30">
                       <p className="text-sm text-muted-foreground mb-2">Producto Original</p>
                       <p className="font-semibold text-foreground">{oldProduct.name}</p>
-                      <p className="text-2xl font-bold text-primary mt-2">${oldProduct.price}</p>
+                      <p className="text-2xl font-bold text-primary mt-2">{formatCurrency(oldProduct.price)}</p>
                     </div>
 
                     <div className="flex items-center justify-center">
@@ -364,7 +415,7 @@ export default function Devoluciones() {
                     <div className="rounded-xl border border-border p-4 bg-muted/30">
                       <p className="text-sm text-muted-foreground mb-2">Nuevo Producto</p>
                       <p className="font-semibold text-foreground">{replacement.name}</p>
-                      <p className="text-2xl font-bold text-accent mt-2">${replacement.price}</p>
+                      <p className="text-2xl font-bold text-accent mt-2">{formatCurrency(replacement.price)}</p>
                     </div>
                   </div>
 
@@ -376,9 +427,9 @@ export default function Devoluciones() {
                           {difference === 0 ? (
                             <span className="text-foreground">Sin diferencia</span>
                           ) : difference < 0 ? (
-                            <span className="text-success">Crédito: ${Math.abs(difference).toFixed(2)}</span>
+                            <span className="text-success">Crédito: {formatCurrency(Math.abs(difference))}</span>
                           ) : (
-                            <span className="text-warning">A pagar: ${difference.toFixed(2)}</span>
+                            <span className="text-warning">A pagar: {formatCurrency(difference)}</span>
                           )}
                         </p>
                       </div>
@@ -478,9 +529,9 @@ export default function Devoluciones() {
                         <TableRow key={credit.id}>
                           <TableCell className="font-medium">{credit.customer_name}</TableCell>
                           <TableCell>{credit.customer_phone || '-'}</TableCell>
-                          <TableCell className="text-right">${credit.amount.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(credit.amount)}</TableCell>
                           <TableCell className="text-right font-bold text-success">
-                            ${credit.remaining_amount.toFixed(2)}
+                            {formatCurrency(credit.remaining_amount)}
                           </TableCell>
                           <TableCell>{getStatusBadge(credit.status)}</TableCell>
                           <TableCell>{new Date(credit.created_at).toLocaleDateString()}</TableCell>
@@ -532,7 +583,7 @@ export default function Devoluciones() {
                       {usedCredits.map((credit) => (
                         <TableRow key={credit.id}>
                           <TableCell className="font-medium">{credit.customer_name}</TableCell>
-                          <TableCell className="text-right">${credit.amount.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(credit.amount)}</TableCell>
                           <TableCell>{getStatusBadge(credit.status)}</TableCell>
                           <TableCell>{new Date(credit.created_at).toLocaleDateString()}</TableCell>
                           <TableCell className="text-muted-foreground">{credit.notes || '-'}</TableCell>

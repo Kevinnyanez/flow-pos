@@ -71,6 +71,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
 import { exportCustomersToExcel, importCustomersFromExcel } from '@/lib/excel-utils';
 
 interface CartItem {
@@ -448,7 +449,7 @@ export default function CuentasCorrientes() {
                           <div className="pt-3 border-t">
                             <div className="flex justify-between items-center text-lg font-bold">
                               <span>Total:</span>
-                              <span className="text-primary">${calculateTotal().toFixed(2)}</span>
+                              <span className="text-primary">{formatCurrency(calculateTotal())}</span>
                             </div>
                           </div>
                         </div>
@@ -508,19 +509,19 @@ export default function CuentasCorrientes() {
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardDescription>Deuda Total</CardDescription>
-              <CardTitle className="text-2xl">${selectedAccountData.totalDebt.toFixed(2)}</CardTitle>
+              <CardTitle className="text-2xl">{formatCurrency(selectedAccountData.totalDebt)}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardDescription>Total Pagado</CardDescription>
-              <CardTitle className="text-2xl text-success">${selectedAccountData.totalPaid.toFixed(2)}</CardTitle>
+              <CardTitle className="text-2xl text-success">{formatCurrency(selectedAccountData.totalPaid)}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardDescription>Saldo Pendiente</CardDescription>
-              <CardTitle className="text-2xl text-destructive">${selectedAccountData.totalRemaining.toFixed(2)}</CardTitle>
+              <CardTitle className="text-2xl text-destructive">{formatCurrency(selectedAccountData.totalRemaining)}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="hover:shadow-lg transition-shadow">
@@ -622,17 +623,7 @@ export default function CuentasCorrientes() {
                                 </Button>
                               </>
                             )}
-                            {debt.status === 'deuda' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => selectedAccount && updateDebtStatus(selectedAccount, debt.id, 'pagado')}
-                                className="h-7 text-xs bg-success/10 hover:bg-success/20 text-success border-success/30"
-                              >
-                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                Marcar Pagado
-                              </Button>
-                            )}
+
                           </div>
                         )}
                         {debt.items && debt.items.length > 0 && (
@@ -643,14 +634,14 @@ export default function CuentasCorrientes() {
                             </p>
                             {debt.items.map((item, idx) => (
                               <p key={idx} className="text-xs text-muted-foreground ml-4">
-                                • {item.product.name} x{item.quantity} - ${(item.product.price * item.quantity).toFixed(2)}
+                                • {item.product.name} x{item.quantity} - {formatCurrency(item.product.price * item.quantity)}
                               </p>
                             ))}
                           </div>
                         )}
                       </div>
                       <div className="text-right flex flex-col items-end gap-2">
-                        <p className="text-lg font-bold">${debt.amount.toFixed(2)}</p>
+                        <p className="text-lg font-bold">{formatCurrency(debt.amount)}</p>
                         <div className="flex gap-1">
                           <Button
                             size="sm"
@@ -694,9 +685,9 @@ export default function CuentasCorrientes() {
                                 <div className="space-y-4">
                                   <div className="bg-muted p-3 rounded-lg">
                                     <p className="text-sm font-medium">Deuda: {debt.description}</p>
-                                    <p className="text-sm text-muted-foreground">Monto original: ${debt.amount.toFixed(2)}</p>
-                                    <p className="text-sm text-muted-foreground">Pagado: ${debt.paidAmount.toFixed(2)}</p>
-                                    <p className="text-sm font-semibold text-destructive">Pendiente: ${debt.remainingAmount.toFixed(2)}</p>
+                                    <p className="text-sm text-muted-foreground">Monto original: {formatCurrency(debt.amount)}</p>
+                                    <p className="text-sm text-muted-foreground">Pagado: {formatCurrency(debt.paidAmount)}</p>
+                                    <p className="text-sm font-semibold text-destructive">Pendiente: {formatCurrency(debt.remainingAmount)}</p>
                                   </div>
                                   <div>
                                     <Label htmlFor="payment-amount">Monto del Pago</Label>
@@ -759,11 +750,11 @@ export default function CuentasCorrientes() {
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div className="bg-muted/50 p-2 rounded">
                         <p className="text-xs text-muted-foreground">Pagado</p>
-                        <p className="font-semibold text-success">${debt.paidAmount.toFixed(2)}</p>
+                        <p className="font-semibold text-success">{formatCurrency(debt.paidAmount)}</p>
                       </div>
                       <div className="bg-muted/50 p-2 rounded">
                         <p className="text-xs text-muted-foreground">Pendiente</p>
-                        <p className="font-semibold text-destructive">${debt.remainingAmount.toFixed(2)}</p>
+                        <p className="font-semibold text-destructive">{formatCurrency(debt.remainingAmount)}</p>
                       </div>
                       <div className="bg-muted/50 p-2 rounded">
                         <p className="text-xs text-muted-foreground">Progreso</p>
@@ -796,7 +787,7 @@ export default function CuentasCorrientes() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-success">
-                                    ${payment.amount.toFixed(2)}
+                                    {formatCurrency(payment.amount)}
                                   </span>
                                   <Button
                                     size="sm"
@@ -1026,10 +1017,10 @@ export default function CuentasCorrientes() {
                   <TableRow key={account.id} className="cursor-pointer hover:bg-muted/50 transition-colors">
                     <TableCell className="font-medium">{account.name}</TableCell>
                     <TableCell>{getStatusBadge(account.status)}</TableCell>
-                    <TableCell className="text-right">${account.totalDebt.toFixed(2)}</TableCell>
-                    <TableCell className="text-right text-success">${account.totalPaid.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(account.totalDebt)}</TableCell>
+                    <TableCell className="text-right text-success">{formatCurrency(account.totalPaid)}</TableCell>
                     <TableCell className="text-right text-destructive font-semibold">
-                      ${account.totalRemaining.toFixed(2)}
+                      {formatCurrency(account.totalRemaining)}
                     </TableCell>
                     <TableCell className="text-right">{account.debts.length}</TableCell>
                     <TableCell>

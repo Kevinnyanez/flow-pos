@@ -17,7 +17,6 @@ const authSchema = z.object({
 });
 
 export default function Login() {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ email: '', password: '' });
   const navigate = useNavigate();
@@ -37,37 +36,18 @@ export default function Login() {
     setLoading(true);
 
     try {
-      if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: form.email,
-          password: form.password,
-        });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      });
 
-        if (error) {
-          toast.error(error.message);
-          return;
-        }
-
-        toast.success('Bienvenido al sistema');
-        navigate('/');
-      } else {
-        const redirectTo = `${window.location.origin}/`;
-        const { error } = await supabase.auth.signUp({
-          email: form.email,
-          password: form.password,
-          options: {
-            emailRedirectTo: redirectTo,
-          },
-        });
-
-        if (error) {
-          toast.error(error.message);
-          return;
-        }
-
-        toast.success('Registro exitoso. Ahora puedes iniciar sesión.');
-        setMode('login');
+      if (error) {
+        toast.error(error.message);
+        return;
       }
+
+      toast.success('Bienvenido al sistema');
+      navigate('/');
     } finally {
       setLoading(false);
     }
@@ -82,30 +62,11 @@ export default function Login() {
           </div>
           <CardTitle className="text-3xl font-bold tracking-tight">ModernPOS</CardTitle>
           <CardDescription className="text-base">
-            {mode === 'login'
-              ? 'Ingresa con tu email y contraseña para acceder al sistema'
-              : 'Crea una cuenta para comenzar a usar el sistema'}
+            Ingresa con tu email y contraseña para acceder al sistema
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
-            <Button
-              type="button"
-              variant={mode === 'login' ? 'default' : 'ghost'}
-              className="w-full rounded-lg"
-              onClick={() => setMode('login')}
-            >
-              Ingresar
-            </Button>
-            <Button
-              type="button"
-              variant={mode === 'signup' ? 'default' : 'ghost'}
-              className="w-full rounded-lg"
-              onClick={() => setMode('signup')}
-            >
-              Registrarse
-            </Button>
-          </div>
+
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -135,7 +96,7 @@ export default function Login() {
               className="w-full h-11 rounded-xl font-medium shadow-md hover:shadow-lg transition-all"
               disabled={loading}
             >
-              {mode === 'login' ? 'Ingresar al Sistema' : 'Crear Cuenta'}
+              Ingresar al Sistema
             </Button>
           </form>
         </CardContent>

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShoppingCart, Plus, Minus, Trash2, DollarSign } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface CartItem {
@@ -22,6 +23,7 @@ export default function Ventas() {
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [surchargePercent, setSurchargePercent] = useState<number>(0);
   const [roundUp, setRoundUp] = useState<boolean>(false);
+  const [roundDown, setRoundDown] = useState<boolean>(false);
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.product.id === product.id);
@@ -79,6 +81,8 @@ export default function Ventas() {
     
     if (roundUp) {
       total = Math.ceil(total / 100) * 100;
+    } else if (roundDown) {
+      total = Math.floor(total / 100) * 100;
     }
     
     return total;
@@ -91,11 +95,15 @@ const filteredProducts = products.filter((p) => {
     p.name.toLowerCase().includes(term) ||
     p.code?.toLowerCase().includes(term) ||
     p.category?.toLowerCase().includes(term) ||
-    p.color?.toLowerCase().includes(term)
+    p.color?.toLowerCase().includes(term) ||
+    p.material?.toLowerCase().includes(term) ||
+    p.description?.toLowerCase().includes(term) ||
+    p.brand?.toLowerCase().includes(term) ||
+    p.model?.toLowerCase().includes(term) ||
+    p.size?.toLowerCase().includes(term) ||
+    p.gender?.toLowerCase().includes(term)
   );
 });
-
-  
 
   const handleCheckout = () => {
     if (cart.length === 0) {
@@ -126,6 +134,7 @@ const filteredProducts = products.filter((p) => {
     setDiscountPercent(0);
     setSurchargePercent(0);
     setRoundUp(false);
+    setRoundDown(false);
   };
 
   return (
@@ -144,7 +153,7 @@ const filteredProducts = products.filter((p) => {
             <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="col-span-2">
     <Input
-      placeholder="Buscar por nombre, categoría, color..."
+      placeholder="Buscar por nombre, código, categoría, color, material, descripción..."
       value={searchTerm}
       onChange={(e) => setSearchTerm(e.target.value)}
       className="rounded-xl"
@@ -160,7 +169,7 @@ const filteredProducts = products.filter((p) => {
                   <div className="flex-1">
                     <p className="font-medium text-foreground">{product.name}</p>
                     <p className="text-sm text-muted-foreground">{product.code}</p>
-                    <p className="text-lg font-bold text-primary mt-1">${product.price}</p>
+                    <p className="text-lg font-bold text-primary mt-1">{formatCurrency(product.price)}</p>
                   </div>
                   <Badge variant={product.stock < 10 ? 'destructive' : 'secondary'}>
                     {product.stock}
@@ -195,7 +204,7 @@ const filteredProducts = products.filter((p) => {
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{item.product.name}</p>
-                          <p className="text-sm text-muted-foreground">${item.product.price}</p>
+                          <p className="text-sm text-muted-foreground">{formatCurrency(item.product.price)}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button
@@ -284,7 +293,7 @@ const filteredProducts = products.filter((p) => {
                     <div className="space-y-3 pt-4 border-t border-border">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Subtotal:</span>
-                        <span className="font-medium">${calculateSubtotal().toFixed(2)}</span>
+                        <span className="font-medium">{formatCurrency(calculateSubtotal())}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -321,7 +330,7 @@ const filteredProducts = products.filter((p) => {
                           type="checkbox"
                           id="roundUp"
                           checked={roundUp}
-                          onChange={(e) => setRoundUp(e.target.checked)}
+                          onChange={(e) => { setRoundUp(e.target.checked); if (e.target.checked) setRoundDown(false); }}
                           className="h-4 w-4 rounded border-border"
                         />
                         <label htmlFor="roundUp" className="text-sm font-medium">
@@ -329,10 +338,23 @@ const filteredProducts = products.filter((p) => {
                         </label>
                       </div>
 
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="roundDown"
+                          checked={roundDown}
+                          onChange={(e) => { setRoundDown(e.target.checked); if (e.target.checked) setRoundUp(false); }}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        <label htmlFor="roundDown" className="text-sm font-medium">
+                          Redondear hacia abajo (centenas)
+                        </label>
+                      </div>
+
                       <div className="flex items-center justify-between py-4 border-t border-border">
                         <span className="text-lg font-medium">Total:</span>
                         <span className="text-3xl font-bold text-primary">
-                          ${calculateTotal().toFixed(2)}
+                          {formatCurrency(calculateTotal())}
                         </span>
                       </div>
                     </div>
