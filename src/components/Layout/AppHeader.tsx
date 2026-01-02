@@ -18,9 +18,22 @@ export function AppHeader() {
   const { currentUser } = usePOS();
   const navigate = useNavigate();
 
+  const { setCurrentUser } = usePOS();
+
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/login');
+    try {
+      const { error } = await supabase.auth.signOut();
+      // Ensure immediate UI logout
+      setCurrentUser(null);
+      if (error) {
+        console.error('Logout error:', error);
+      }
+      navigate('/login');
+    } catch (err) {
+      console.error('Logout failed:', err);
+      setCurrentUser(null);
+      navigate('/login');
+    }
   };
 
   const getInitials = (name: string) => {
