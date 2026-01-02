@@ -299,7 +299,7 @@ export default function Devoluciones() {
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder="Selecciona una venta" />
                   </SelectTrigger>
-                  <SelectContent position="item">
+                  <SelectContent position="popper">
                     {filteredSales.length === 0 ? (
                       <SelectItem value="__no_sales" disabled>No se encontraron ventas</SelectItem>
                     ) : (

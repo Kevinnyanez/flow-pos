@@ -31,14 +31,7 @@ export default function Dashboard() {
       color: 'text-accent',
       bgColor: 'bg-accent/10',
     },
-    {
-      title: 'Ingresos Totales',
-      value: formatCurrency(totalRevenue),
-      icon: DollarSign,
-      description: 'Ventas acumuladas',
-      color: 'text-success',
-      bgColor: 'bg-success/10',
-    },
+
     {
       title: 'En la Calle',
       value: formatCurrency(totalOutstanding),
