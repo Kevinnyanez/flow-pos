@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePOS, Product } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +38,8 @@ const SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'Único'];
 const GENDERS = ['Hombre', 'Mujer', 'Unisex', 'Niño', 'Niña'];
 
 export default function Stock() {
-  const { products, addProduct, updateProduct, deleteProduct } = usePOS();
+  const { products, addProduct, updateProduct, deleteProduct, currentUser, authInitialized, setCurrentUser } = usePOS();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -150,22 +152,38 @@ export default function Stock() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Verificar sesión antes de comenzar la importación
+    if (!authInitialized || !currentUser) {
+      toast.error('Tu sesión expiró o no estás autenticado. Por favor inicia sesión nuevamente.');
+      // limpiar input para permitir reintento después del login
+      if (event.target) event.target.value = '';
+      return;
+    }
+
     try {
-      const importedProducts = await importProductsFromExcel(file);
+      const { products: importedProducts, skipped } = await importProductsFromExcel(file);
       
-      if (importedProducts.length === 0) {
+      if (!importedProducts || importedProducts.length === 0) {
         toast.error('No se encontraron productos válidos en el archivo');
+        if (event.target) event.target.value = '';
         return;
       }
 
-      // Agregar cada producto importado
+      // Agregar/actualizar cada producto importado
       let added = 0;
       let updated = 0;
       
       for (const product of importedProducts) {
-        const existingProduct = products.find(p => p.code === product.code);
+        // Match by code when available, otherwise fallback to name (case-insensitive)
+        const existingProduct = product.code
+          ? products.find(p => p.code === product.code)
+          : products.find(p => p.name.toLowerCase() === product.name.toLowerCase());
+
         if (existingProduct) {
-          await updateProduct(existingProduct.id, product);
+          await updateProduct(existingProduct.id, {
+            ...product,
+            ...(product.code === '' ? { code: undefined } : {}),
+          });
           updated++;
         } else {
           addProduct(product);
@@ -173,14 +191,32 @@ export default function Stock() {
         }
       }
 
-      toast.success(`Importación completada: ${added} productos agregados, ${updated} productos actualizados`);
+      const summaryParts = [`${added} agregados`, `${updated} actualizados`];
+      if (skipped && skipped > 0) summaryParts.push(`${skipped} omitidos`);
+
+      toast.success(`Importación completada: ${summaryParts.join(', ')}`);
       
       // Limpiar el input
-      event.target.value = '';
+      if (event.target) event.target.value = '';
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error al importar el archivo Excel');
+      // Detectar errores de sesión/permiso y forzar re-login
+      const errMsg = error instanceof Error ? error.message : String(error);
+      if (/auth session missing|AuthSessionMissingError|session missing|403|401/i.test(errMsg)) {
+        toast.error('Error de autenticación: tu sesión expiró. Iniciá sesión nuevamente.');
+        // limpiar estado de usuario y redirigir al login
+        try {
+          setCurrentUser(null);
+        } catch (e) {
+          // no crítico
+        }
+        navigate('/login');
+        if (event.target) event.target.value = '';
+        return;
+      }
+
+      toast.error(errMsg || 'Error al importar el archivo Excel');
       console.error(error);
-      event.target.value = '';
+      if (event.target) event.target.value = '';
     }
   };
   

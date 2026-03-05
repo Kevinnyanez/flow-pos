@@ -157,6 +157,7 @@ export default function CuentasCorrientes() {
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountNotes, setNewAccountNotes] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [productSearch, setProductSearch] = useState('');
   const [newDebtDescription, setNewDebtDescription] = useState('');
   const [editDebtAmount, setEditDebtAmount] = useState('');
   const [editDebtDescription, setEditDebtDescription] = useState('');
@@ -244,6 +245,7 @@ export default function CuentasCorrientes() {
         status: newDebtStatus,
       });
       setCart([]);
+      setProductSearch('');
       setNewDebtDescription('');
       setNewDebtStatus('pendiente');
       setIsNewDebtOpen(false);
@@ -374,24 +376,60 @@ export default function CuentasCorrientes() {
                   <div className="space-y-4">
                     <div>
                       <Label className="text-base font-semibold">Productos Disponibles</Label>
+
+                      <div className="mt-3">
+                        <Input
+                          placeholder="Buscar producto por nombre, código, color o material..."
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          className="rounded-xl mb-3"
+                        />
+                      </div>
+
                       <div className="mt-3 space-y-2 max-h-96 overflow-y-auto border rounded-lg p-3">
-                        {products.map((product) => (
+                        {products.filter((product) => {
+                          const q = productSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return (
+                            product.name.toLowerCase().includes(q) ||
+                            product.code?.toLowerCase().includes(q) ||
+                            product.color?.toLowerCase().includes(q) ||
+                            product.material?.toLowerCase().includes(q) ||
+                            (product.description || '').toLowerCase().includes(q) ||
+                            (product.brand || '').toLowerCase().includes(q)
+                          );
+                        }).map((product) => (
                           <button
                             key={product.id}
                             onClick={() => addToCart(product)}
                             disabled={product.stock === 0}
                             className="w-full flex items-center justify-between rounded-lg border-2 border-border p-3 text-left transition-all hover:border-primary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <div className="flex-1">
-                              <p className="font-medium text-sm">{product.name}</p>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{product.name}</p>
                               <p className="text-xs text-muted-foreground">{product.code}</p>
-                              <p className="text-sm font-bold text-primary mt-1">${product.price}</p>
+                              <p className="text-sm font-bold text-primary mt-1">{formatCurrency(product.price)}</p>
                             </div>
                             <Badge variant={product.stock < 10 ? 'destructive' : 'secondary'}>
                               {product.stock}
                             </Badge>
                           </button>
                         ))}
+
+                        {products.filter((product) => {
+                          const q = productSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return (
+                            product.name.toLowerCase().includes(q) ||
+                            product.code?.toLowerCase().includes(q) ||
+                            product.color?.toLowerCase().includes(q) ||
+                            product.material?.toLowerCase().includes(q) ||
+                            (product.description || '').toLowerCase().includes(q) ||
+                            (product.brand || '').toLowerCase().includes(q)
+                          );
+                        }).length === 0 && (
+                          <p className="text-center text-muted-foreground py-6">No se encontraron productos</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -489,6 +527,7 @@ export default function CuentasCorrientes() {
                       <Button variant="outline" onClick={() => {
                         setIsNewDebtOpen(false);
                         setCart([]);
+                        setProductSearch('');
                         setNewDebtDescription('');
                       }}>
                         Cancelar

@@ -43,7 +43,7 @@ export const exportProductsToExcel = (products: Product[]) => {
 };
 
 // Importar productos desde Excel
-export const importProductsFromExcel = async (file: File): Promise<Omit<Product, 'id'>[]> => {
+export const importProductsFromExcel = async (file: File): Promise<{ products: Omit<Product, 'id'>[]; skipped: number }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -55,21 +55,41 @@ export const importProductsFromExcel = async (file: File): Promise<Omit<Product,
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-        const products: Omit<Product, 'id'>[] = jsonData.map((row: any) => ({
-          name: row['Nombre'] || row['nombre'] || '',
-          code: row['Código'] || row['código'] || row['codigo'] || '',
-          price: parseFloat(row['Precio'] || row['precio'] || '0'),
-          stock: parseInt(row['Stock'] || row['stock'] || '0'),
-          size: row['Talle'] || row['talle'] || undefined,
-          color: row['Color'] || row['color'] || undefined,
-          brand: row['Marca'] || row['marca'] || undefined,
-          model: row['Modelo'] || row['modelo'] || undefined,
-          category: row['Categoría'] || row['categoría'] || row['categoria'] || undefined,
-          material: row['Material'] || row['material'] || undefined,
-          gender: row['Género'] || row['género'] || row['genero'] || undefined,
-        })).filter((p: Omit<Product, 'id'>) => p.name && p.code); // Filtrar filas vacías
+        let skipped = 0;
+        const products: Omit<Product, 'id'>[] = jsonData.map((row: any) => {
+          const rawName = row['Nombre'] || row['nombre'] || '';
+          const rawCode = row['Código'] || row['código'] || row['codigo'] || '';
+          const rawPrice = row['Precio'] || row['precio'] || '';
+          const rawStock = row['Stock'] || row['stock'] || '';
 
-        resolve(products);
+          // Parse numeric fields and default to 0 if missing or invalid
+          let price = parseFloat(String(rawPrice || '').toString().replace(',', '.'));
+          if (isNaN(price)) price = 0;
+
+          let stock = parseInt(String(rawStock || '0'));
+          if (isNaN(stock)) stock = 0;
+
+          return {
+            name: String(rawName || '').trim(),
+            code: String(rawCode || '').trim() || '',
+            price,
+            stock,
+            size: row['Talle'] || row['talle'] || undefined,
+            color: row['Color'] || row['color'] || undefined,
+            brand: row['Marca'] || row['marca'] || undefined,
+            model: row['Modelo'] || row['modelo'] || undefined,
+            category: row['Categoría'] || row['categoría'] || row['categoria'] || undefined,
+            material: row['Material'] || row['material'] || undefined,
+            description: row['Descripción'] || row['descripcion'] || row['descripcion'] || row['description'] || undefined,
+            gender: row['Género'] || row['género'] || row['genero'] || undefined,
+          } as Omit<Product, 'id'>;
+        }).filter((p: Omit<Product, 'id'>) => {
+          const valid = p.name && p.name.length > 0;
+          if (!valid) skipped++;
+          return valid;
+        }); // Filtrar filas sin nombre (las consideramos inválidas)
+
+        resolve({ products, skipped });
       } catch (error) {
         reject(new Error('Error al leer el archivo Excel. Verifica que el formato sea correcto.'));
       }
