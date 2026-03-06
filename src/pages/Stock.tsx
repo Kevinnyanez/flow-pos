@@ -44,6 +44,7 @@ import {
 const CATEGORIES = ['Remera', 'Pantalón', 'Campera', 'Buzo', 'Camisa', 'Short', 'Vestido', 'Pollera', 'Accesorio', 'Calzado', 'Otro'];
 const SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'Único'];
 const GENDERS = ['Hombre', 'Mujer', 'Unisex', 'Niño', 'Niña'];
+type NewVariantDraft = { sku: string; size: string; color: string; price: string; stock: string };
 
 export default function Stock() {
   const {
@@ -65,6 +66,7 @@ export default function Stock() {
   const productsPerPage = 20;
   const [isOpen, setIsOpen] = useState(false);
   const [isVariantsOpen, setIsVariantsOpen] = useState(false);
+  const [useVariantsOnCreate, setUseVariantsOnCreate] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [selectedProductForVariants, setSelectedProductForVariants] = useState<Product | null>(null);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
@@ -75,6 +77,9 @@ export default function Stock() {
     price: '',
     stock: '',
   });
+  const [newProductVariants, setNewProductVariants] = useState<NewVariantDraft[]>([
+    { sku: '', size: '', color: '', price: '', stock: '' },
+  ]);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -120,7 +125,7 @@ export default function Stock() {
     }
   }, [currentPage, totalPages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const productData = {
       name: formData.name,
@@ -138,10 +143,79 @@ export default function Stock() {
     };
 
     if (editingProduct) {
-      updateProduct(editingProduct.id, productData);
+      await updateProduct(editingProduct.id, productData);
       toast.success('Producto actualizado correctamente');
     } else {
-      addProduct(productData);
+      const parsedVariants = useVariantsOnCreate
+        ? newProductVariants
+            .filter((variant) =>
+              variant.price.trim() !== '' ||
+              variant.stock.trim() !== '' ||
+              variant.size.trim() !== '' ||
+              variant.color.trim() !== '' ||
+              variant.sku.trim() !== ''
+            )
+            .map((variant) => ({
+              sku: variant.sku.trim() || undefined,
+              size: variant.size.trim() || undefined,
+              color: variant.color.trim() || undefined,
+              price: parseFloat(variant.price),
+              stock: parseInt(variant.stock || '0', 10),
+            }))
+        : [];
+
+      if (useVariantsOnCreate && parsedVariants.length === 0) {
+        toast.error('Agrega al menos una variante para continuar');
+        return;
+      }
+
+      if (useVariantsOnCreate) {
+        const hasInvalid = parsedVariants.some((variant) => isNaN(variant.price) || variant.price < 0 || isNaN(variant.stock) || variant.stock < 0);
+        if (hasInvalid) {
+          toast.error('Hay variantes con precio o stock inválido');
+          return;
+        }
+
+        const signatures = new Set<string>();
+        for (const variant of parsedVariants) {
+          const signature = `${(variant.size || '').toLowerCase()}::${(variant.color || '').toLowerCase()}`;
+          if (signature !== '::' && signatures.has(signature)) {
+            toast.error('Hay variantes duplicadas con mismo talle y color');
+            return;
+          }
+          signatures.add(signature);
+        }
+
+        const totalStock = parsedVariants.reduce((sum, variant) => sum + variant.stock, 0);
+        const basePrice = parsedVariants[0]?.price ?? 0;
+
+        const created = await addProduct(
+          {
+            ...productData,
+            price: basePrice,
+            stock: totalStock,
+            size: undefined,
+            color: undefined,
+          },
+          { skipDefaultVariant: true }
+        );
+
+        if (!created) {
+          toast.error('No se pudo crear el producto');
+          return;
+        }
+
+        await Promise.all(
+          parsedVariants.map((variant, index) =>
+            addProductVariant(created.id, {
+              ...variant,
+              isDefault: index === 0,
+            })
+          )
+        );
+      } else {
+        await addProduct(productData);
+      }
       toast.success('Producto agregado correctamente');
     }
     handleCloseSheet();
@@ -149,6 +223,7 @@ export default function Stock() {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+    setUseVariantsOnCreate(false);
     setFormData({
       name: product.name,
       code: product.code,
@@ -182,7 +257,21 @@ export default function Stock() {
   const handleCloseSheet = () => {
     setIsOpen(false);
     setEditingProduct(null);
+    setUseVariantsOnCreate(false);
+    setNewProductVariants([{ sku: '', size: '', color: '', price: '', stock: '' }]);
     setFormData({ name: '', code: '', price: '', stock: '', size: '', color: '', brand: '', model: '', category: '', material: '', description: '', gender: '' });
+  };
+
+  const addVariantDraftRow = () => {
+    setNewProductVariants((prev) => [...prev, { sku: '', size: '', color: '', price: '', stock: '' }]);
+  };
+
+  const updateVariantDraftRow = (index: number, field: keyof NewVariantDraft, value: string) => {
+    setNewProductVariants((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  };
+
+  const removeVariantDraftRow = (index: number) => {
+    setNewProductVariants((prev) => prev.filter((_, i) => i !== index));
   };
 
   const openVariantsDialog = (product: Product) => {
@@ -357,7 +446,7 @@ export default function Stock() {
             variantsAdded++;
           }
         } else {
-          addProduct({
+          await addProduct({
             name: row.name,
             code: row.code || `${row.name.replace(/\s+/g, '-').toUpperCase()}`,
             price: row.price,
@@ -444,7 +533,11 @@ export default function Stock() {
             <SheetTrigger asChild>
               <Button
                 className="gap-2 shadow-md hover:shadow-lg transition-all"
-                onClick={() => setEditingProduct(null)}
+                onClick={() => {
+                  setEditingProduct(null);
+                  setUseVariantsOnCreate(false);
+                  setNewProductVariants([{ sku: '', size: '', color: '', price: '', stock: '' }]);
+                }}
               >
                 <Plus className="h-4 w-4" />
                 Nueva Prenda
@@ -482,6 +575,23 @@ export default function Stock() {
                   placeholder="Ej: REM-001-BL-M"
                 />
               </div>
+
+              {!editingProduct && (
+                <div className="rounded-xl border border-border p-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="useVariantsOnCreate"
+                      type="checkbox"
+                      checked={useVariantsOnCreate}
+                      onChange={(e) => setUseVariantsOnCreate(e.target.checked)}
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <Label htmlFor="useVariantsOnCreate" className="cursor-pointer">
+                      Este producto tiene variantes (talle/color)
+                    </Label>
+                  </div>
+                </div>
+              )}
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -492,7 +602,8 @@ export default function Stock() {
                     step="0.01"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    required
+                    required={!useVariantsOnCreate}
+                    disabled={useVariantsOnCreate && !editingProduct}
                     className="rounded-xl"
                   />
                 </div>
@@ -503,7 +614,8 @@ export default function Stock() {
                     type="number"
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    required
+                    required={!useVariantsOnCreate}
+                    disabled={useVariantsOnCreate && !editingProduct}
                     className="rounded-xl"
                   />
                 </div>
@@ -526,7 +638,7 @@ export default function Stock() {
                 <div className="space-y-2">
                   <Label>Talle</Label>
                   <Select value={formData.size} onValueChange={(value) => setFormData({ ...formData, size: value })}>
-                    <SelectTrigger className="rounded-xl">
+                    <SelectTrigger className="rounded-xl" disabled={useVariantsOnCreate && !editingProduct}>
                       <SelectValue placeholder="Seleccionar" />
                     </SelectTrigger>
                     <SelectContent>
@@ -545,6 +657,7 @@ export default function Stock() {
                     id="color"
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    disabled={useVariantsOnCreate && !editingProduct}
                     className="rounded-xl"
                     placeholder="Ej: Negro, Blanco"
                   />
@@ -563,6 +676,83 @@ export default function Stock() {
                   </Select>
                 </div>
               </div>
+
+              {useVariantsOnCreate && !editingProduct && (
+                <div className="space-y-3 rounded-xl border border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-sm">Variantes iniciales</p>
+                    <Button type="button" variant="outline" size="sm" onClick={addVariantDraftRow}>
+                      <Plus className="h-3 w-3 mr-1" />
+                      Agregar variante
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {newProductVariants.map((variant, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-border p-2">
+                        <div className="col-span-3">
+                          <Label className="text-xs">SKU</Label>
+                          <Input
+                            value={variant.sku}
+                            onChange={(e) => updateVariantDraftRow(index, 'sku', e.target.value)}
+                            placeholder="SKU"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">Talle</Label>
+                          <Input
+                            value={variant.size}
+                            onChange={(e) => updateVariantDraftRow(index, 'size', e.target.value)}
+                            placeholder="38"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">Color</Label>
+                          <Input
+                            value={variant.color}
+                            onChange={(e) => updateVariantDraftRow(index, 'color', e.target.value)}
+                            placeholder="Azul"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">Precio</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={variant.price}
+                            onChange={(e) => updateVariantDraftRow(index, 'price', e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">Stock</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={variant.stock}
+                            onChange={(e) => updateVariantDraftRow(index, 'stock', e.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="col-span-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => removeVariantDraftRow(index)}
+                            disabled={newProductVariants.length === 1}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    La primera variante se guarda como variante principal por defecto.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

@@ -112,7 +112,10 @@ interface POSContextType {
   setCustomerAccounts: React.Dispatch<React.SetStateAction<CustomerAccount[]>>;
   cashRegisters: CashRegister[];
   setCashRegisters: React.Dispatch<React.SetStateAction<CashRegister[]>>;
-  addProduct: (product: Omit<Product, 'id'>) => void;
+  addProduct: (
+    product: Omit<Product, 'id'>,
+    options?: { skipDefaultVariant?: boolean }
+  ) => Promise<Product | null>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => void;
   addProductVariant: (productId: string, variant: Omit<ProductVariant, 'id' | 'productId'>) => Promise<void>;
@@ -502,11 +505,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
   }, []);
 
 
-  const refreshProductFromVariants = (productId: string) => {
+  const refreshProductFromVariants = (
+    productId: string,
+    variantsSource: ProductVariant[] = productVariants
+  ) => {
     setProducts((prev) =>
       prev.map((product) => {
         if (product.id !== productId) return product;
-        const variants = productVariants.filter((variant) => variant.productId === productId);
+        const variants = variantsSource.filter((variant) => variant.productId === productId);
         if (variants.length === 0) return product;
         const defaultVariant = variants.find((variant) => variant.isDefault) || variants[0];
         return {
@@ -521,8 +527,11 @@ export function POSProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addProduct = (product: Omit<Product, 'id'>) => {
-    supabase
+  const addProduct = async (
+    product: Omit<Product, 'id'>,
+    options?: { skipDefaultVariant?: boolean }
+  ): Promise<Product | null> => {
+    const { data, error } = await supabase
       .from('products')
       .insert({
         name: product.name,
@@ -538,58 +547,61 @@ export function POSProvider({ children }: { children: ReactNode }) {
         gender: product.gender || null,
       })
       .select('*')
-      .single()
-      .then(async ({ data, error }) => {
-        if (error || !data) return;
+      .single();
 
-        const { data: variantData } = await supabase
-          .from('product_variants')
-          .insert({
-            product_id: data.id,
-            sku: product.code || null,
-            size: product.size || null,
-            color: product.color || null,
-            price: product.price,
-            stock: product.stock,
-            is_default: true,
-          })
-          .select('*')
-          .single();
+    if (error || !data) return null;
 
-        const defaultVariant: ProductVariant | undefined = variantData
-          ? {
-              id: variantData.id,
-              productId: variantData.product_id,
-              sku: variantData.sku ?? undefined,
-              size: variantData.size ?? undefined,
-              color: variantData.color ?? undefined,
-              price: Number(variantData.price),
-              stock: Number(variantData.stock ?? 0),
-              isDefault: Boolean(variantData.is_default),
-            }
-          : undefined;
+    let defaultVariant: ProductVariant | undefined;
+    if (!options?.skipDefaultVariant) {
+      const { data: variantData } = await supabase
+        .from('product_variants')
+        .insert({
+          product_id: data.id,
+          sku: product.code || null,
+          size: product.size || null,
+          color: product.color || null,
+          price: product.price,
+          stock: product.stock,
+          is_default: true,
+        })
+        .select('*')
+        .single();
 
-        const newProduct: Product = {
-          id: data.id,
-          name: data.name,
-          code: data.code,
-          price: defaultVariant?.price ?? Number(data.price),
-          stock: defaultVariant?.stock ?? Number(data.stock ?? 0),
-          variants: defaultVariant ? [defaultVariant] : [],
-          size: defaultVariant?.size ?? data.size ?? undefined,
-          color: defaultVariant?.color ?? data.color ?? undefined,
-          brand: data.brand ?? undefined,
-          model: data.model ?? undefined,
-          category: data.category ?? undefined,
-          material: data.material ?? undefined,
-          gender: data.gender ?? undefined,
-        };
+      defaultVariant = variantData
+        ? {
+            id: variantData.id,
+            productId: variantData.product_id,
+            sku: variantData.sku ?? undefined,
+            size: variantData.size ?? undefined,
+            color: variantData.color ?? undefined,
+            price: Number(variantData.price),
+            stock: Number(variantData.stock ?? 0),
+            isDefault: Boolean(variantData.is_default),
+          }
+        : undefined;
+    }
 
-        if (defaultVariant) {
-          setProductVariants((prev) => [...prev, defaultVariant]);
-        }
-        setProducts((prev) => [...prev, newProduct]);
-      });
+    const newProduct: Product = {
+      id: data.id,
+      name: data.name,
+      code: data.code,
+      price: defaultVariant?.price ?? Number(data.price),
+      stock: defaultVariant?.stock ?? Number(data.stock ?? 0),
+      variants: defaultVariant ? [defaultVariant] : [],
+      size: defaultVariant?.size ?? data.size ?? undefined,
+      color: defaultVariant?.color ?? data.color ?? undefined,
+      brand: data.brand ?? undefined,
+      model: data.model ?? undefined,
+      category: data.category ?? undefined,
+      material: data.material ?? undefined,
+      gender: data.gender ?? undefined,
+    };
+
+    if (defaultVariant) {
+      setProductVariants((prev) => [...prev, defaultVariant]);
+    }
+    setProducts((prev) => [...prev, newProduct]);
+    return newProduct;
   };
 
   const updateProduct = async (id: string, product: Partial<Product>) => {
@@ -702,8 +714,11 @@ export function POSProvider({ children }: { children: ReactNode }) {
       isDefault: Boolean(data.is_default),
     };
 
-    setProductVariants((prev) => [...prev, newVariant]);
-    refreshProductFromVariants(productId);
+    setProductVariants((prev) => {
+      const next = [...prev, newVariant];
+      refreshProductFromVariants(productId, next);
+      return next;
+    });
   };
 
   const updateProductVariant = async (
@@ -722,21 +737,32 @@ export function POSProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.from('product_variants').update(payload).eq('id', variantId);
     if (error) return;
 
-    setProductVariants((prev) =>
-      prev.map((variant) => (variant.id === variantId ? { ...variant, ...updates } : variant))
-    );
-
-    const currentVariant = productVariants.find((variant) => variant.id === variantId);
-    if (currentVariant) refreshProductFromVariants(currentVariant.productId);
+    setProductVariants((prev) => {
+      let targetProductId: string | null = null;
+      const next = prev.map((variant) => {
+        if (variant.id !== variantId) return variant;
+        targetProductId = variant.productId;
+        return { ...variant, ...updates };
+      });
+      if (targetProductId) {
+        refreshProductFromVariants(targetProductId, next);
+      }
+      return next;
+    });
   };
 
   const deleteProductVariant = async (variantId: string) => {
-    const currentVariant = productVariants.find((variant) => variant.id === variantId);
     const { error } = await supabase.from('product_variants').delete().eq('id', variantId);
     if (error) return;
 
-    setProductVariants((prev) => prev.filter((variant) => variant.id !== variantId));
-    if (currentVariant) refreshProductFromVariants(currentVariant.productId);
+    setProductVariants((prev) => {
+      const currentVariant = prev.find((variant) => variant.id === variantId);
+      const next = prev.filter((variant) => variant.id !== variantId);
+      if (currentVariant) {
+        refreshProductFromVariants(currentVariant.productId, next);
+      }
+      return next;
+    });
   };
 
 
