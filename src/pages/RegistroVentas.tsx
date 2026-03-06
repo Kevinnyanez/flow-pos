@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { usePOS } from '@/contexts/POSContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -9,16 +11,30 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { FileText, ShoppingBag } from 'lucide-react';
+import { FileText, ShoppingBag, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 export default function RegistroVentas() {
   const { sales } = usePOS();
+  const [currentPage, setCurrentPage] = useState(1);
+  const salesPerPage = 20;
 
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
   const totalItems = sales.reduce((sum, sale) => {
     return sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0);
   }, 0);
+  const orderedSales = sales.slice().reverse();
+  const totalPages = Math.max(1, Math.ceil(orderedSales.length / salesPerPage));
+  const paginatedSales = orderedSales.slice(
+    (currentPage - 1) * salesPerPage,
+    currentPage * salesPerPage
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -77,7 +93,9 @@ export default function RegistroVentas() {
       <Card className="border-border/50 shadow-md">
         <CardHeader>
           <CardTitle>Historial Detallado</CardTitle>
-          <CardDescription>Todas las ventas realizadas en el sistema</CardDescription>
+          <CardDescription>
+            Todas las ventas realizadas en el sistema - Página {currentPage} de {totalPages}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -101,10 +119,7 @@ export default function RegistroVentas() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sales
-                    .slice()
-                    .reverse()
-                    .map((sale) => {
+                  paginatedSales.map((sale) => {
                       const totalQuantity = sale.items.reduce((sum, item) => sum + item.quantity, 0);
                       return (
                         <TableRow key={sale.id} className="hover:bg-muted/50 transition-colors">
@@ -148,6 +163,33 @@ export default function RegistroVentas() {
               </TableBody>
             </Table>
           </div>
+          {sales.length > 0 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Mostrando {paginatedSales.length} de {sales.length} ventas
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

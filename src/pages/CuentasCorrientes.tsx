@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePOS, Product, PaymentMethod, DebtStatus } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,6 +79,8 @@ interface CartItem {
   quantity: number;
 }
 
+type ManualAdjustmentType = 'ninguno' | 'descuento' | 'recargo';
+
 export default function CuentasCorrientes() {
   const { 
     customerAccounts, 
@@ -139,7 +141,9 @@ export default function CuentasCorrientes() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [accountsPage, setAccountsPage] = useState(1);
   const debtsPerPage = 5;
+  const accountsPerPage = 15;
   
   // Dialog states
   const [isNewAccountOpen, setIsNewAccountOpen] = useState(false);
@@ -161,13 +165,22 @@ export default function CuentasCorrientes() {
   const [newDebtDescription, setNewDebtDescription] = useState('');
   const [editDebtAmount, setEditDebtAmount] = useState('');
   const [editDebtDescription, setEditDebtDescription] = useState('');
+  const [editDebtAdjustmentType, setEditDebtAdjustmentType] = useState<ManualAdjustmentType>('ninguno');
+  const [editDebtAdjustmentValue, setEditDebtAdjustmentValue] = useState('');
   const [newPaymentAmount, setNewPaymentAmount] = useState('');
+  const [newPaymentAdjustmentType, setNewPaymentAdjustmentType] = useState<ManualAdjustmentType>('ninguno');
+  const [newPaymentAdjustmentValue, setNewPaymentAdjustmentValue] = useState('');
   const [newPaymentDescription, setNewPaymentDescription] = useState('');
   const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('efectivo');
   const [newDebtStatus, setNewDebtStatus] = useState<DebtStatus>('pendiente');
 
   const filteredAccounts = customerAccounts.filter((account) =>
     account.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const totalAccountsPages = Math.max(1, Math.ceil(filteredAccounts.length / accountsPerPage));
+  const paginatedAccounts = filteredAccounts.slice(
+    (accountsPage - 1) * accountsPerPage,
+    accountsPage * accountsPerPage
   );
 
   const selectedAccountData = customerAccounts.find((a) => a.id === selectedAccount);
@@ -177,6 +190,12 @@ export default function CuentasCorrientes() {
   const indexOfFirstDebt = indexOfLastDebt - debtsPerPage;
   const currentDebts = selectedAccountData?.debts.slice(indexOfFirstDebt, indexOfLastDebt) || [];
   const totalPages = Math.ceil((selectedAccountData?.debts.length || 0) / debtsPerPage);
+
+  useEffect(() => {
+    if (accountsPage > totalAccountsPages) {
+      setAccountsPage(totalAccountsPages);
+    }
+  }, [accountsPage, totalAccountsPages]);
 
   const handleAddAccount = () => {
     if (newAccountName.trim()) {
@@ -232,16 +251,41 @@ export default function CuentasCorrientes() {
     setCart(cart.filter((item) => item.product.id !== productId));
   };
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   };
+
+  const getSignedAdjustment = (type: ManualAdjustmentType, percent: number, baseAmount: number) => {
+    const normalizedPercent = Math.max(0, percent);
+    const adjustmentAmount = (baseAmount * normalizedPercent) / 100;
+    if (type === 'descuento') return -Math.abs(adjustmentAmount);
+    if (type === 'recargo') return Math.abs(adjustmentAmount);
+    return 0;
+  };
+
+  const stripManualAdjustmentTag = (description: string) =>
+    description.replace(/\s\[(Descuento|Recargo):\s[^[]+\]$/i, '').trim();
+
+  const appendManualAdjustmentTag = (
+    description: string,
+    type: ManualAdjustmentType,
+    value: number
+  ) => {
+    const cleanDescription = stripManualAdjustmentTag(description);
+    if (type === 'ninguno' || value <= 0) return cleanDescription;
+
+    const label = type === 'descuento' ? 'Descuento' : 'Recargo';
+    return `${cleanDescription} [${label}: ${value.toFixed(2)}%]`;
+  };
+
+  const newDebtSubtotal = calculateSubtotal();
 
   const handleAddDebt = () => {
     if (selectedAccount && cart.length > 0 && newDebtDescription.trim()) {
       addDebtToAccount(selectedAccount, {
         date: new Date(),
         items: cart,
-        description: newDebtDescription,
+        description: newDebtDescription.trim(),
         status: newDebtStatus,
       });
       setCart([]);
@@ -252,14 +296,23 @@ export default function CuentasCorrientes() {
     }
   };
 
-  const handleEditDebt = () => {
+  const handleEditDebt = async () => {
     if (selectedAccount && selectedDebtForEdit && editDebtAmount && editDebtDescription.trim()) {
-      updateDebt(selectedAccount, selectedDebtForEdit, {
-        amount: parseFloat(editDebtAmount),
-        description: editDebtDescription,
+      const parsedEditAdjustmentValue = Math.max(0, parseFloat(editDebtAdjustmentValue) || 0);
+      const finalDescription = appendManualAdjustmentTag(
+        editDebtDescription,
+        editDebtAdjustmentType,
+        parsedEditAdjustmentValue
+      );
+
+      await updateDebt(selectedAccount, selectedDebtForEdit, {
+        amount: Math.max(0, parseFloat(editDebtAmount)),
+        description: finalDescription,
       });
       setEditDebtAmount('');
       setEditDebtDescription('');
+      setEditDebtAdjustmentType('ninguno');
+      setEditDebtAdjustmentValue('');
       setSelectedDebtForEdit(null);
       setIsEditDebtOpen(false);
     }
@@ -276,14 +329,56 @@ export default function CuentasCorrientes() {
     }
   };
 
-  const handleAddPayment = () => {
+  const handleAddPayment = async () => {
     if (selectedAccount && selectedDebtForPayment && newPaymentAmount) {
+      const debt = selectedAccountData?.debts.find((d) => d.id === selectedDebtForPayment);
+      if (!debt) return;
+
+      const parsedAdjustmentPercent = Math.max(0, parseFloat(newPaymentAdjustmentValue) || 0);
+      const signedAdjustment = getSignedAdjustment(
+        newPaymentAdjustmentType,
+        parsedAdjustmentPercent,
+        debt.remainingAmount
+      );
+      const adjustedRemainingAmount = Math.max(0, debt.remainingAmount + signedAdjustment);
+      const updatedDebtAmount = debt.paidAmount + adjustedRemainingAmount;
+      const adjustmentApplied =
+        newPaymentAdjustmentType !== 'ninguno' &&
+        parsedAdjustmentPercent > 0 &&
+        Math.abs(signedAdjustment) > 0.001;
+      const updatedDebtDescription = adjustmentApplied
+        ? appendManualAdjustmentTag(debt.description, newPaymentAdjustmentType, parsedAdjustmentPercent)
+        : debt.description;
+
+      if (Math.abs(updatedDebtAmount - debt.amount) > 0.001) {
+        await updateDebt(selectedAccount, selectedDebtForPayment, {
+          amount: updatedDebtAmount,
+          description: updatedDebtDescription,
+        });
+      }
+
+      const updatedRemainingAmount = Math.max(0, updatedDebtAmount - debt.paidAmount);
+      const parsedPaymentAmount = Math.max(0, parseFloat(newPaymentAmount));
+
+      if (parsedPaymentAmount > updatedRemainingAmount) {
+        toast.error(`El pago supera el saldo pendiente (${formatCurrency(updatedRemainingAmount)})`);
+        return;
+      }
+
+      const autoAdjustmentNote = adjustmentApplied
+        ? `${newPaymentAdjustmentType === 'descuento' ? 'Pago con descuento' : 'Pago con recargo'} ${parsedAdjustmentPercent.toFixed(2)}% (${signedAdjustment >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signedAdjustment))}). Deuda ajustada: ${formatCurrency(debt.amount)} -> ${formatCurrency(updatedDebtAmount)}.`
+        : '';
+      const userNote = newPaymentDescription.trim();
+      const finalPaymentDescription = [autoAdjustmentNote, userNote].filter(Boolean).join(' ');
+
       addPaymentToDebt(selectedAccount, selectedDebtForPayment, {
         date: new Date(),
-        amount: parseFloat(newPaymentAmount),
-        description: newPaymentDescription,
+        amount: parsedPaymentAmount,
+        description: finalPaymentDescription || undefined,
       }, newPaymentMethod);
       setNewPaymentAmount('');
+      setNewPaymentAdjustmentType('ninguno');
+      setNewPaymentAdjustmentValue('');
       setNewPaymentDescription('');
       setNewPaymentMethod('efectivo');
       setSelectedDebtForPayment(null);
@@ -303,7 +398,19 @@ export default function CuentasCorrientes() {
     if (debt) {
       setSelectedDebtForEdit(debtId);
       setEditDebtAmount(debt.amount.toString());
-      setEditDebtDescription(debt.description);
+      setEditDebtDescription(stripManualAdjustmentTag(debt.description));
+      const baseAmount = debt.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+      const diff = debt.amount - baseAmount;
+      if (Math.abs(diff) < 0.01) {
+        setEditDebtAdjustmentType('ninguno');
+        setEditDebtAdjustmentValue('');
+      } else if (diff < 0) {
+        setEditDebtAdjustmentType('descuento');
+        setEditDebtAdjustmentValue(baseAmount > 0 ? ((Math.abs(diff) / baseAmount) * 100).toFixed(2) : '0');
+      } else {
+        setEditDebtAdjustmentType('recargo');
+        setEditDebtAdjustmentValue(baseAmount > 0 ? ((Math.abs(diff) / baseAmount) * 100).toFixed(2) : '0');
+      }
       setIsEditDebtOpen(true);
     }
   };
@@ -487,7 +594,7 @@ export default function CuentasCorrientes() {
                           <div className="pt-3 border-t">
                             <div className="flex justify-between items-center text-lg font-bold">
                               <span>Total:</span>
-                              <span className="text-primary">{formatCurrency(calculateTotal())}</span>
+                              <span className="text-primary">{formatCurrency(newDebtSubtotal)}</span>
                             </div>
                           </div>
                         </div>
@@ -676,6 +783,19 @@ export default function CuentasCorrientes() {
                                 • {item.product.name} x{item.quantity} - {formatCurrency(item.product.price * item.quantity)}
                               </p>
                             ))}
+                            {(() => {
+                              const baseAmount = debt.items.reduce(
+                                (sum, item) => sum + item.product.price * item.quantity,
+                                0
+                              );
+                              const diff = debt.amount - baseAmount;
+                              if (Math.abs(diff) < 0.01) return null;
+                              return (
+                                <p className="text-xs ml-4 font-medium text-muted-foreground">
+                                  • Ajuste manual: {diff > 0 ? '+' : '-'} {formatCurrency(Math.abs(diff))}
+                                </p>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -708,7 +828,32 @@ export default function CuentasCorrientes() {
                                   size="sm"
                                   variant="outline"
                                   className="h-8"
-                                  onClick={() => setSelectedDebtForPayment(debt.id)}
+                                  onClick={() => {
+                                    setSelectedDebtForPayment(debt.id);
+                                    const baseAmount = debt.items.reduce(
+                                      (sum, item) => sum + item.product.price * item.quantity,
+                                      0
+                                    );
+                                    const diff = debt.amount - baseAmount;
+                                    if (Math.abs(diff) < 0.01) {
+                                      setNewPaymentAdjustmentType('ninguno');
+                                      setNewPaymentAdjustmentValue('');
+                                    } else if (diff < 0) {
+                                      setNewPaymentAdjustmentType('descuento');
+                                      setNewPaymentAdjustmentValue(
+                                        debt.remainingAmount > 0
+                                          ? ((Math.abs(diff) / debt.remainingAmount) * 100).toFixed(2)
+                                          : '0'
+                                      );
+                                    } else {
+                                      setNewPaymentAdjustmentType('recargo');
+                                      setNewPaymentAdjustmentValue(
+                                        debt.remainingAmount > 0
+                                          ? ((Math.abs(diff) / debt.remainingAmount) * 100).toFixed(2)
+                                          : '0'
+                                      );
+                                    }
+                                  }}
                                 >
                                   <CreditCard className="w-3 h-3 mr-1" />
                                   Abonar
@@ -728,6 +873,84 @@ export default function CuentasCorrientes() {
                                     <p className="text-sm text-muted-foreground">Pagado: {formatCurrency(debt.paidAmount)}</p>
                                     <p className="text-sm font-semibold text-destructive">Pendiente: {formatCurrency(debt.remainingAmount)}</p>
                                   </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Ajuste antes de cobrar</Label>
+                                      <Select
+                                        value={newPaymentAdjustmentType}
+                                        onValueChange={(value) => setNewPaymentAdjustmentType(value as ManualAdjustmentType)}
+                                      >
+                                        <SelectTrigger className="rounded-xl">
+                                          <SelectValue placeholder="Sin ajuste" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="ninguno">Sin ajuste</SelectItem>
+                                          <SelectItem value="descuento">Descuento</SelectItem>
+                                          <SelectItem value="recargo">Recargo</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="payment-adjustment-value">Ajuste (%)</Label>
+                                      <Input
+                                        id="payment-adjustment-value"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder="0"
+                                        value={newPaymentAdjustmentValue}
+                                        onChange={(e) => setNewPaymentAdjustmentValue(e.target.value)}
+                                        disabled={newPaymentAdjustmentType === 'ninguno'}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border p-3 text-sm space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-muted-foreground">Ajuste aplicado:</span>
+                                      <span>
+                                        {(() => {
+                                          const parsedAdjustmentPercent = Math.max(0, parseFloat(newPaymentAdjustmentValue) || 0);
+                                          const signedAdjustment = getSignedAdjustment(
+                                            newPaymentAdjustmentType,
+                                            parsedAdjustmentPercent,
+                                            debt.remainingAmount
+                                          );
+                                          return signedAdjustment >= 0
+                                            ? `+ ${parsedAdjustmentPercent.toFixed(2)}% (${formatCurrency(signedAdjustment)})`
+                                            : `- ${parsedAdjustmentPercent.toFixed(2)}% (${formatCurrency(Math.abs(signedAdjustment))})`;
+                                        })()}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between font-medium">
+                                      <span>Total deuda ajustada:</span>
+                                      <span>
+                                        {(() => {
+                                          const parsedAdjustmentPercent = Math.max(0, parseFloat(newPaymentAdjustmentValue) || 0);
+                                          const signedAdjustment = getSignedAdjustment(
+                                            newPaymentAdjustmentType,
+                                            parsedAdjustmentPercent,
+                                            debt.remainingAmount
+                                          );
+                                          const adjustedDebtAmount = debt.paidAmount + Math.max(0, debt.remainingAmount + signedAdjustment);
+                                          return formatCurrency(adjustedDebtAmount);
+                                        })()}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between font-medium text-destructive">
+                                      <span>Nuevo saldo pendiente:</span>
+                                      <span>
+                                        {(() => {
+                                          const parsedAdjustmentPercent = Math.max(0, parseFloat(newPaymentAdjustmentValue) || 0);
+                                          const signedAdjustment = getSignedAdjustment(
+                                            newPaymentAdjustmentType,
+                                            parsedAdjustmentPercent,
+                                            debt.remainingAmount
+                                          );
+                                          return formatCurrency(Math.max(0, debt.remainingAmount + signedAdjustment));
+                                        })()}
+                                      </span>
+                                    </div>
+                                  </div>
                                   <div>
                                     <Label htmlFor="payment-amount">Monto del Pago</Label>
                                     <Input
@@ -735,7 +958,15 @@ export default function CuentasCorrientes() {
                                       type="number"
                                       step="0.01"
                                       placeholder="0.00"
-                                      max={debt.remainingAmount}
+                                      max={(() => {
+                                        const parsedAdjustmentPercent = Math.max(0, parseFloat(newPaymentAdjustmentValue) || 0);
+                                        const signedAdjustment = getSignedAdjustment(
+                                          newPaymentAdjustmentType,
+                                          parsedAdjustmentPercent,
+                                          debt.remainingAmount
+                                        );
+                                        return Math.max(0, debt.remainingAmount + signedAdjustment);
+                                      })()}
                                       value={newPaymentAmount}
                                       onChange={(e) => setNewPaymentAmount(e.target.value)}
                                     />
@@ -771,6 +1002,8 @@ export default function CuentasCorrientes() {
                                     <Button variant="outline" onClick={() => {
                                       setIsNewPaymentOpen(false);
                                       setSelectedDebtForPayment(null);
+                                      setNewPaymentAdjustmentType('ninguno');
+                                      setNewPaymentAdjustmentValue('');
                                     }}>
                                       Cancelar
                                     </Button>
@@ -871,6 +1104,54 @@ export default function CuentasCorrientes() {
                   onChange={(e) => setEditDebtAmount(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Ajuste manual</Label>
+                  <Select
+                    value={editDebtAdjustmentType}
+                    onValueChange={(value) => setEditDebtAdjustmentType(value as ManualAdjustmentType)}
+                  >
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder="Sin ajuste" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ninguno">Sin ajuste</SelectItem>
+                      <SelectItem value="descuento">Descuento</SelectItem>
+                      <SelectItem value="recargo">Recargo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-adjustment-value">Ajuste (%)</Label>
+                  <Input
+                    id="edit-adjustment-value"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0"
+                    value={editDebtAdjustmentValue}
+                    onChange={(e) => setEditDebtAdjustmentValue(e.target.value)}
+                    disabled={editDebtAdjustmentType === 'ninguno'}
+                  />
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const selectedDebt = selectedAccountData?.debts.find((d) => d.id === selectedDebtForEdit);
+                  if (!selectedDebt) return;
+                  const baseAmount = selectedDebt.items.reduce(
+                    (sum, item) => sum + item.product.price * item.quantity,
+                    0
+                  );
+                  const adjustmentPercent = Math.max(0, parseFloat(editDebtAdjustmentValue) || 0);
+                  const signedAdjustment = getSignedAdjustment(editDebtAdjustmentType, adjustmentPercent, baseAmount);
+                  setEditDebtAmount(Math.max(0, baseAmount + signedAdjustment).toFixed(2));
+                }}
+              >
+                Aplicar % al monto
+              </Button>
               <div>
                 <Label htmlFor="edit-description">Descripción</Label>
                 <Textarea
@@ -884,6 +1165,8 @@ export default function CuentasCorrientes() {
                 <Button variant="outline" onClick={() => {
                   setIsEditDebtOpen(false);
                   setSelectedDebtForEdit(null);
+                  setEditDebtAdjustmentType('ninguno');
+                  setEditDebtAdjustmentValue('');
                 }}>
                   Cancelar
                 </Button>
@@ -1025,7 +1308,10 @@ export default function CuentasCorrientes() {
               <Input
                 placeholder="Buscar cliente..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setAccountsPage(1);
+                }}
                 className="pl-9"
               />
             </div>
@@ -1052,7 +1338,7 @@ export default function CuentasCorrientes() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAccounts.map((account) => (
+                paginatedAccounts.map((account) => (
                   <TableRow key={account.id} className="cursor-pointer hover:bg-muted/50 transition-colors">
                     <TableCell className="font-medium">{account.name}</TableCell>
                     <TableCell>{getStatusBadge(account.status)}</TableCell>
@@ -1076,6 +1362,31 @@ export default function CuentasCorrientes() {
               )}
             </TableBody>
           </Table>
+          {filteredAccounts.length > 0 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Página {accountsPage} de {totalAccountsPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAccountsPage((prev) => Math.max(1, prev - 1))}
+                  disabled={accountsPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAccountsPage((prev) => Math.min(totalAccountsPages, prev + 1))}
+                  disabled={accountsPage === totalAccountsPages}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

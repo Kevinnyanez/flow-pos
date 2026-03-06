@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { usePOS } from '@/contexts/POSContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DollarSign, TrendingUp, ShoppingCart, Calendar, CreditCard } from 'lucide-react';
+import { DollarSign, ShoppingCart, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -51,6 +52,10 @@ export default function Caja() {
 
   const [dateFrom, setDateFrom] = useState<string>(defaultFrom);
   const [dateTo, setDateTo] = useState<string>(todayStr);
+  const [dailyPage, setDailyPage] = useState(1);
+  const [salesPage, setSalesPage] = useState(1);
+  const dailyRowsPerPage = 10;
+  const salesRowsPerPage = 15;
 
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
 
@@ -80,6 +85,35 @@ export default function Caja() {
     if (!dateFrom || !dateTo) return true;
     return d.date >= dateFrom && d.date <= dateTo;
   });
+  const orderedSales = sales.slice().reverse();
+
+  const totalDailyPages = Math.max(1, Math.ceil(filteredDailyRevenues.length / dailyRowsPerPage));
+  const paginatedDailyRevenues = filteredDailyRevenues.slice(
+    (dailyPage - 1) * dailyRowsPerPage,
+    dailyPage * dailyRowsPerPage
+  );
+
+  const totalSalesPages = Math.max(1, Math.ceil(orderedSales.length / salesRowsPerPage));
+  const paginatedSales = orderedSales.slice(
+    (salesPage - 1) * salesRowsPerPage,
+    salesPage * salesRowsPerPage
+  );
+
+  useEffect(() => {
+    if (dailyPage > totalDailyPages) {
+      setDailyPage(totalDailyPages);
+    }
+  }, [dailyPage, totalDailyPages]);
+
+  useEffect(() => {
+    if (salesPage > totalSalesPages) {
+      setSalesPage(totalSalesPages);
+    }
+  }, [salesPage, totalSalesPages]);
+
+  useEffect(() => {
+    setDailyPage(1);
+  }, [dateFrom, dateTo]);
 
   const resetRange = () => {
     setDateFrom(defaultFrom);
@@ -227,7 +261,7 @@ export default function Caja() {
                     <TableCell colSpan={2} className="text-center py-6 text-muted-foreground">No hay datos</TableCell>
                   </TableRow>
                 ) : (
-                  filteredDailyRevenues.map((d) => (
+                  paginatedDailyRevenues.map((d) => (
                     <TableRow key={d.date} className="hover:bg-muted/50 transition-colors">
                       <TableCell>{new Date(d.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</TableCell>
                       <TableCell>{formatCurrency(d.total)}</TableCell>
@@ -237,6 +271,33 @@ export default function Caja() {
               </TableBody>
             </Table>
           </div>
+          {filteredDailyRevenues.length > 0 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Página {dailyPage} de {totalDailyPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDailyPage((prev) => Math.max(1, prev - 1))}
+                  disabled={dailyPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDailyPage((prev) => Math.min(totalDailyPages, prev + 1))}
+                  disabled={dailyPage === totalDailyPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -264,10 +325,7 @@ export default function Caja() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sales
-                    .slice()
-                    .reverse()
-                    .map((sale) => (
+                  paginatedSales.map((sale) => (
                       <TableRow key={sale.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell className="font-medium">
                           {new Date(sale.date).toLocaleString('es-AR', {
@@ -313,6 +371,33 @@ export default function Caja() {
               </TableBody>
             </Table>
           </div>
+          {sales.length > 0 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Página {salesPage} de {totalSalesPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSalesPage((prev) => Math.max(1, prev - 1))}
+                  disabled={salesPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSalesPage((prev) => Math.min(totalSalesPages, prev + 1))}
+                  disabled={salesPage === totalSalesPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

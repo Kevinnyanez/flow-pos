@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePOS, Product } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShoppingCart, Plus, Minus, Trash2, DollarSign } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -88,6 +88,9 @@ export default function Ventas() {
     return total;
   };
   const [searchTerm, setSearchTerm] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [productPage, setProductPage] = useState(1);
+  const productsPerPage = 20;
 
 const filteredProducts = products.filter((p) => {
   const term = searchTerm.toLowerCase();
@@ -105,6 +108,26 @@ const filteredProducts = products.filter((p) => {
   );
 });
 
+  const filteredCustomers = customerAccounts.filter((account) =>
+    account.name.toLowerCase().includes(customerSearch.toLowerCase())
+  );
+
+  const totalProductPages = Math.max(1, Math.ceil(filteredProducts.length / productsPerPage));
+  const paginatedProducts = filteredProducts.slice(
+    (productPage - 1) * productsPerPage,
+    productPage * productsPerPage
+  );
+
+  useEffect(() => {
+    setProductPage(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (productPage > totalProductPages) {
+      setProductPage(totalProductPages);
+    }
+  }, [productPage, totalProductPages]);
+
   const handleCheckout = () => {
     if (cart.length === 0) {
       toast.error('El carrito está vacío');
@@ -121,7 +144,7 @@ const filteredProducts = products.filter((p) => {
       items: cart,
       total: calculateTotal(),
       userId: currentUser.id,
-      customerAccountId: selectedCustomer || undefined,
+      customerAccountId: selectedCustomer && selectedCustomer !== 'none' ? selectedCustomer : undefined,
       paymentMethod,
       description: description.trim() || undefined,
     });
@@ -159,7 +182,7 @@ const filteredProducts = products.filter((p) => {
       className="rounded-xl"
     />
   </div>
-              {filteredProducts.map((product) => (
+              {paginatedProducts.map((product) => (
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}
@@ -176,6 +199,33 @@ const filteredProducts = products.filter((p) => {
                   </Badge>
                 </button>
               ))}
+              {filteredProducts.length > 0 && (
+                <div className="col-span-2 flex items-center justify-between pt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Página {productPage} de {totalProductPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setProductPage((prev) => Math.max(1, prev - 1))}
+                      disabled={productPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setProductPage((prev) => Math.min(totalProductPages, prev + 1))}
+                      disabled={productPage === totalProductPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -275,13 +325,19 @@ const filteredProducts = products.filter((p) => {
                       <label className="text-sm font-medium mb-2 block">
                         Cliente (opcional)
                       </label>
+                      <Input
+                        placeholder="Buscar cliente por nombre..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        className="rounded-xl mb-2"
+                      />
                       <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
                         <SelectTrigger className="rounded-xl">
                           <SelectValue placeholder="Seleccionar cliente" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Sin cuenta corriente</SelectItem>
-                          {customerAccounts.map((account) => (
+                          {filteredCustomers.map((account) => (
                             <SelectItem key={account.id} value={account.id}>
                               {account.name}
                             </SelectItem>

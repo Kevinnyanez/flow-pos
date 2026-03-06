@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePOS, Product } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Trash2, Package, Download, Upload } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, Download, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { exportProductsToExcel, importProductsFromExcel } from '@/lib/excel-utils';
@@ -41,6 +41,8 @@ export default function Stock() {
   const { products, addProduct, updateProduct, deleteProduct, currentUser, authInitialized, setCurrentUser } = usePOS();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 20;
   const [isOpen, setIsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
@@ -72,6 +74,18 @@ export default function Stock() {
       (p.gender && p.gender.toLowerCase().includes(term)) ||
       (p.description && p.description.toLowerCase().includes(term))
   );
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / productsPerPage));
+  const paginatedProducts = filteredProducts.slice(
+    (currentPage - 1) * productsPerPage,
+    currentPage * productsPerPage
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -448,14 +462,17 @@ export default function Stock() {
           <Input
             placeholder="Buscar por nombre, código, marca, categoría, color, material, descripción..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
             className="pl-10 rounded-xl"
           />
         </div>
       </Card>
 
       <div className="flex flex-col gap-4 w-full">
-        {filteredProducts.map((product) => (
+        {paginatedProducts.map((product) => (
           <Card
           key={product.id}
           className="p-6 shadow-md"
@@ -546,6 +563,34 @@ export default function Stock() {
         </Card>
         ))}
       </div>
+
+      {filteredProducts.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Página {currentPage} de {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {filteredProducts.length === 0 && (
         <Card className="p-12 text-center border-border/50 shadow-md">
