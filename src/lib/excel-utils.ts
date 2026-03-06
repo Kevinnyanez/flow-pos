@@ -2,21 +2,60 @@ import * as XLSX from 'xlsx';
 import { Product } from '@/contexts/POSContext';
 import { CustomerAccount } from '@/contexts/POSContext';
 
+export interface ImportedProductVariantRow {
+  name: string;
+  code: string;
+  sku?: string;
+  price: number;
+  stock: number;
+  size?: string;
+  color?: string;
+  brand?: string;
+  model?: string;
+  category?: string;
+  material?: string;
+  description?: string;
+  gender?: string;
+}
+
 // Exportar productos a Excel
 export const exportProductsToExcel = (products: Product[]) => {
-  const data = products.map((product) => ({
-    'Nombre': product.name,
-    'Código': product.code,
-    'Precio': product.price,
-    'Stock': product.stock,
-    'Talle': product.size || '',
-    'Color': product.color || '',
-    'Marca': product.brand || '',
-    'Modelo': product.model || '',
-    'Categoría': product.category || '',
-    'Material': product.material || '',
-    'Género': product.gender || '',
-  }));
+  const data = products.flatMap((product) => {
+    const variants = product.variants || [];
+    if (variants.length === 0) {
+      return [{
+        'Nombre': product.name,
+        'Código': product.code,
+        'SKU Variante': '',
+        'Precio': product.price,
+        'Stock': product.stock,
+        'Talle': product.size || '',
+        'Color': product.color || '',
+        'Marca': product.brand || '',
+        'Modelo': product.model || '',
+        'Categoría': product.category || '',
+        'Material': product.material || '',
+        'Género': product.gender || '',
+        'Descripción': product.description || '',
+      }];
+    }
+
+    return variants.map((variant) => ({
+      'Nombre': product.name,
+      'Código': product.code,
+      'SKU Variante': variant.sku || '',
+      'Precio': variant.price,
+      'Stock': variant.stock,
+      'Talle': variant.size || '',
+      'Color': variant.color || '',
+      'Marca': product.brand || '',
+      'Modelo': product.model || '',
+      'Categoría': product.category || '',
+      'Material': product.material || '',
+      'Género': product.gender || '',
+      'Descripción': product.description || '',
+    }));
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
@@ -26,6 +65,7 @@ export const exportProductsToExcel = (products: Product[]) => {
   const columnWidths = [
     { wch: 30 }, // Nombre
     { wch: 15 }, // Código
+    { wch: 18 }, // SKU Variante
     { wch: 12 }, // Precio
     { wch: 10 }, // Stock
     { wch: 10 }, // Talle
@@ -42,8 +82,8 @@ export const exportProductsToExcel = (products: Product[]) => {
   XLSX.writeFile(workbook, fileName);
 };
 
-// Importar productos desde Excel
-export const importProductsFromExcel = async (file: File): Promise<{ products: Omit<Product, 'id'>[]; skipped: number }> => {
+// Importar variantes de productos desde Excel (1 fila = 1 variante)
+export const importProductsFromExcel = async (file: File): Promise<{ rows: ImportedProductVariantRow[]; skipped: number }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -56,9 +96,10 @@ export const importProductsFromExcel = async (file: File): Promise<{ products: O
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         let skipped = 0;
-        const products: Omit<Product, 'id'>[] = jsonData.map((row: any) => {
+        const rows: ImportedProductVariantRow[] = jsonData.map((row: any) => {
           const rawName = row['Nombre'] || row['nombre'] || '';
           const rawCode = row['Código'] || row['código'] || row['codigo'] || '';
+          const rawSku = row['SKU Variante'] || row['sku variante'] || row['SKU'] || row['sku'] || '';
           const rawPrice = row['Precio'] || row['precio'] || '';
           const rawStock = row['Stock'] || row['stock'] || '';
 
@@ -72,6 +113,7 @@ export const importProductsFromExcel = async (file: File): Promise<{ products: O
           return {
             name: String(rawName || '').trim(),
             code: String(rawCode || '').trim() || '',
+            sku: String(rawSku || '').trim() || undefined,
             price,
             stock,
             size: row['Talle'] || row['talle'] || undefined,
@@ -82,14 +124,14 @@ export const importProductsFromExcel = async (file: File): Promise<{ products: O
             material: row['Material'] || row['material'] || undefined,
             description: row['Descripción'] || row['descripcion'] || row['descripcion'] || row['description'] || undefined,
             gender: row['Género'] || row['género'] || row['genero'] || undefined,
-          } as Omit<Product, 'id'>;
-        }).filter((p: Omit<Product, 'id'>) => {
+          } as ImportedProductVariantRow;
+        }).filter((p: ImportedProductVariantRow) => {
           const valid = p.name && p.name.length > 0;
           if (!valid) skipped++;
           return valid;
         }); // Filtrar filas sin nombre (las consideramos inválidas)
 
-        resolve({ products, skipped });
+        resolve({ rows, skipped });
       } catch (error) {
         reject(new Error('Error al leer el archivo Excel. Verifica que el formato sea correcto.'));
       }

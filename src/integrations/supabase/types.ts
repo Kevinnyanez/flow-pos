@@ -181,6 +181,7 @@ export type Database = {
           debt_id: string
           id: string
           product_id: string
+          product_variant_id: string | null
           quantity: number
           unit_price: number
         }
@@ -189,6 +190,7 @@ export type Database = {
           debt_id: string
           id?: string
           product_id: string
+          product_variant_id?: string | null
           quantity: number
           unit_price: number
         }
@@ -197,6 +199,7 @@ export type Database = {
           debt_id?: string
           id?: string
           product_id?: string
+          product_variant_id?: string | null
           quantity?: number
           unit_price?: number
         }
@@ -213,6 +216,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "debt_items_product_variant_id_fkey"
+            columns: ["product_variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
         ]
@@ -302,6 +312,53 @@ export type Database = {
           },
         ]
       }
+      product_variants: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          is_default: boolean
+          price: number
+          product_id: string
+          size: string | null
+          sku: string | null
+          stock: number
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          price: number
+          product_id: string
+          size?: string | null
+          sku?: string | null
+          stock?: number
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          price?: number
+          product_id?: string
+          size?: string | null
+          sku?: string | null
+          stock?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           brand: string | null
@@ -358,6 +415,7 @@ export type Database = {
           created_at: string
           id: string
           product_id: string
+          product_variant_id: string | null
           quantity: number
           sale_id: string
           unit_price: number
@@ -366,6 +424,7 @@ export type Database = {
           created_at?: string
           id?: string
           product_id: string
+          product_variant_id?: string | null
           quantity: number
           sale_id: string
           unit_price: number
@@ -374,6 +433,7 @@ export type Database = {
           created_at?: string
           id?: string
           product_id?: string
+          product_variant_id?: string | null
           quantity?: number
           sale_id?: string
           unit_price?: number
@@ -384,6 +444,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_product_variant_id_fkey"
+            columns: ["product_variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
           {

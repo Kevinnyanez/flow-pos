@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePOS, Product } from '@/contexts/POSContext';
+import { usePOS, Product, ProductVariant } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,23 +28,53 @@ import {
 } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Edit, Trash2, Package, Download, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, Download, Upload, ChevronLeft, ChevronRight, Layers3, Save } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { exportProductsToExcel, importProductsFromExcel } from '@/lib/excel-utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 const CATEGORIES = ['Remera', 'Pantalón', 'Campera', 'Buzo', 'Camisa', 'Short', 'Vestido', 'Pollera', 'Accesorio', 'Calzado', 'Otro'];
 const SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'Único'];
 const GENDERS = ['Hombre', 'Mujer', 'Unisex', 'Niño', 'Niña'];
 
 export default function Stock() {
-  const { products, addProduct, updateProduct, deleteProduct, currentUser, authInitialized, setCurrentUser } = usePOS();
+  const {
+    products,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    addProductVariant,
+    updateProductVariant,
+    deleteProductVariant,
+    currentUser,
+    authInitialized,
+    setCurrentUser,
+    productVariants,
+  } = usePOS();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const productsPerPage = 20;
   const [isOpen, setIsOpen] = useState(false);
+  const [isVariantsOpen, setIsVariantsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [selectedProductForVariants, setSelectedProductForVariants] = useState<Product | null>(null);
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
+  const [variantForm, setVariantForm] = useState({
+    sku: '',
+    size: '',
+    color: '',
+    price: '',
+    stock: '',
+  });
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -80,6 +110,9 @@ export default function Stock() {
     (currentPage - 1) * productsPerPage,
     currentPage * productsPerPage
   );
+  const selectedProductWithVariants = selectedProductForVariants
+    ? products.find((p) => p.id === selectedProductForVariants.id) || selectedProductForVariants
+    : null;
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -152,6 +185,87 @@ export default function Stock() {
     setFormData({ name: '', code: '', price: '', stock: '', size: '', color: '', brand: '', model: '', category: '', material: '', description: '', gender: '' });
   };
 
+  const openVariantsDialog = (product: Product) => {
+    setSelectedProductForVariants(product);
+    setEditingVariant(null);
+    setVariantForm({ sku: '', size: '', color: '', price: '', stock: '' });
+    setIsVariantsOpen(true);
+  };
+
+  const handleEditVariant = (variant: ProductVariant) => {
+    setEditingVariant(variant);
+    setVariantForm({
+      sku: variant.sku || '',
+      size: variant.size || '',
+      color: variant.color || '',
+      price: variant.price.toString(),
+      stock: variant.stock.toString(),
+    });
+  };
+
+  const resetVariantForm = () => {
+    setEditingVariant(null);
+    setVariantForm({ sku: '', size: '', color: '', price: '', stock: '' });
+  };
+
+  const handleSaveVariant = async () => {
+    if (!selectedProductForVariants) return;
+
+    const price = parseFloat(variantForm.price);
+    const stock = parseInt(variantForm.stock || '0', 10);
+    if (isNaN(price) || price < 0) {
+      toast.error('Precio de variante inválido');
+      return;
+    }
+    if (isNaN(stock) || stock < 0) {
+      toast.error('Stock de variante inválido');
+      return;
+    }
+
+    const normalizedSize = variantForm.size.trim().toLowerCase();
+    const normalizedColor = variantForm.color.trim().toLowerCase();
+    const variantList = selectedProductWithVariants?.variants || [];
+    const duplicated = variantList.some((variant) => {
+      if (editingVariant && variant.id === editingVariant.id) return false;
+      return (variant.size || '').trim().toLowerCase() === normalizedSize
+        && (variant.color || '').trim().toLowerCase() === normalizedColor;
+    });
+    if (duplicated && (normalizedSize || normalizedColor)) {
+      toast.error('Ya existe una variante con ese talle y color');
+      return;
+    }
+
+    if (editingVariant) {
+      await updateProductVariant(editingVariant.id, {
+        sku: variantForm.sku.trim() || undefined,
+        size: variantForm.size.trim() || undefined,
+        color: variantForm.color.trim() || undefined,
+        price,
+        stock,
+      });
+      toast.success('Variante actualizada');
+    } else {
+      await addProductVariant(selectedProductForVariants.id, {
+        sku: variantForm.sku.trim() || undefined,
+        size: variantForm.size.trim() || undefined,
+        color: variantForm.color.trim() || undefined,
+        price,
+        stock,
+        isDefault: false,
+      });
+      toast.success('Variante agregada');
+    }
+    resetVariantForm();
+  };
+
+  const handleDeleteVariant = async (variantId: string) => {
+    await deleteProductVariant(variantId);
+    toast.success('Variante eliminada');
+    if (editingVariant?.id === variantId) {
+      resetVariantForm();
+    }
+  };
+
   const handleExportExcel = () => {
     try {
       exportProductsToExcel(products);
@@ -175,9 +289,9 @@ export default function Stock() {
     }
 
     try {
-      const { products: importedProducts, skipped } = await importProductsFromExcel(file);
+      const { rows: importedRows, skipped } = await importProductsFromExcel(file);
       
-      if (!importedProducts || importedProducts.length === 0) {
+      if (!importedRows || importedRows.length === 0) {
         toast.error('No se encontraron productos válidos en el archivo');
         if (event.target) event.target.value = '';
         return;
@@ -186,26 +300,83 @@ export default function Stock() {
       // Agregar/actualizar cada producto importado
       let added = 0;
       let updated = 0;
+      let variantsAdded = 0;
+      let variantsUpdated = 0;
       
-      for (const product of importedProducts) {
+      for (const row of importedRows) {
         // Match by code when available, otherwise fallback to name (case-insensitive)
-        const existingProduct = product.code
-          ? products.find(p => p.code === product.code)
-          : products.find(p => p.name.toLowerCase() === product.name.toLowerCase());
+        const existingProduct = row.code
+          ? products.find(p => p.code === row.code)
+          : products.find(p => p.name.toLowerCase() === row.name.toLowerCase());
 
         if (existingProduct) {
           await updateProduct(existingProduct.id, {
-            ...product,
-            ...(product.code === '' ? { code: undefined } : {}),
+            name: row.name,
+            code: row.code || existingProduct.code,
+            brand: row.brand,
+            model: row.model,
+            category: row.category,
+            material: row.material,
+            description: row.description,
+            gender: row.gender,
           });
           updated++;
+
+          const productVariantsList = (existingProduct.variants || []).length > 0
+            ? existingProduct.variants || []
+            : productVariants.filter((variant) => variant.productId === existingProduct.id);
+
+          const matchedVariant = productVariantsList.find((variant) => {
+            if (row.sku && variant.sku) {
+              return variant.sku.toLowerCase() === row.sku.toLowerCase();
+            }
+            return (
+              (variant.size || '').toLowerCase() === (row.size || '').toLowerCase() &&
+              (variant.color || '').toLowerCase() === (row.color || '').toLowerCase()
+            );
+          });
+
+          if (matchedVariant) {
+            await updateProductVariant(matchedVariant.id, {
+              sku: row.sku,
+              size: row.size,
+              color: row.color,
+              price: row.price,
+              stock: row.stock,
+            });
+            variantsUpdated++;
+          } else {
+            await addProductVariant(existingProduct.id, {
+              sku: row.sku,
+              size: row.size,
+              color: row.color,
+              price: row.price,
+              stock: row.stock,
+              isDefault: false,
+            });
+            variantsAdded++;
+          }
         } else {
-          addProduct(product);
+          addProduct({
+            name: row.name,
+            code: row.code || `${row.name.replace(/\s+/g, '-').toUpperCase()}`,
+            price: row.price,
+            stock: row.stock,
+            size: row.size,
+            color: row.color,
+            brand: row.brand,
+            model: row.model,
+            category: row.category,
+            material: row.material,
+            description: row.description,
+            gender: row.gender,
+          });
           added++;
         }
       }
 
       const summaryParts = [`${added} agregados`, `${updated} actualizados`];
+      summaryParts.push(`${variantsAdded} variantes agregadas`, `${variantsUpdated} variantes actualizadas`);
       if (skipped && skipped > 0) summaryParts.push(`${skipped} omitidos`);
 
       toast.success(`Importación completada: ${summaryParts.join(', ')}`);
@@ -514,11 +685,42 @@ export default function Stock() {
                 <Badge variant="outline" className="text-xs">{product.brand}</Badge>
               )}
             </div>
+
+            {(product.variants || []).length > 0 && (
+              <div className="rounded-lg border border-border p-2">
+                <p className="text-xs text-muted-foreground mb-1">Variantes</p>
+                <div className="space-y-1">
+                  {(product.variants || []).slice(0, 3).map((variant) => (
+                    <div key={variant.id} className="flex items-center justify-between text-xs">
+                      <span>
+                        {(variant.size || 'Sin talle')} / {(variant.color || 'Sin color')}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {formatCurrency(variant.price)} - Stock {variant.stock}
+                      </span>
+                    </div>
+                  ))}
+                  {(product.variants || []).length > 3 && (
+                    <p className="text-xs text-muted-foreground">
+                      +{(product.variants || []).length - 3} variantes más
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
         
             {/* Footer con precio y acciones */}
             <div className="flex items-center justify-between pt-3 border-t border-border">
               <span className="text-2xl font-bold text-primary">{formatCurrency(product.price)}</span>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openVariantsDialog(product)}
+                  className="rounded-lg"
+                >
+                  <Layers3 className="h-4 w-4" />
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -598,6 +800,113 @@ export default function Stock() {
           <p className="text-lg text-muted-foreground">No se encontraron prendas</p>
         </Card>
       )}
+
+      <Dialog open={isVariantsOpen} onOpenChange={setIsVariantsOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Variantes de {selectedProductWithVariants?.name}</DialogTitle>
+            <DialogDescription>
+              Administra talles, colores, precio y stock por variante.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-3">
+              <h4 className="font-medium">Variantes actuales</h4>
+              <div className="max-h-80 overflow-y-auto space-y-2">
+                {(selectedProductWithVariants?.variants || []).map((variant) => (
+                  <div
+                    key={variant.id}
+                    className="flex items-center justify-between rounded-lg border border-border p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {(variant.size || 'Sin talle')} / {(variant.color || 'Sin color')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        SKU: {variant.sku || '-'} | {formatCurrency(variant.price)} | Stock {variant.stock}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleEditVariant(variant)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDeleteVariant(variant.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {(selectedProductWithVariants?.variants || []).length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sin variantes aún.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-medium">{editingVariant ? 'Editar variante' : 'Nueva variante'}</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label>SKU (opcional)</Label>
+                  <Input
+                    value={variantForm.sku}
+                    onChange={(e) => setVariantForm((prev) => ({ ...prev, sku: e.target.value }))}
+                    placeholder="Ej: JEAN-AZ-38"
+                  />
+                </div>
+                <div>
+                  <Label>Talle</Label>
+                  <Input
+                    value={variantForm.size}
+                    onChange={(e) => setVariantForm((prev) => ({ ...prev, size: e.target.value }))}
+                    placeholder="Ej: 38"
+                  />
+                </div>
+                <div>
+                  <Label>Color</Label>
+                  <Input
+                    value={variantForm.color}
+                    onChange={(e) => setVariantForm((prev) => ({ ...prev, color: e.target.value }))}
+                    placeholder="Ej: Azul"
+                  />
+                </div>
+                <div>
+                  <Label>Precio</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={variantForm.price}
+                    onChange={(e) => setVariantForm((prev) => ({ ...prev, price: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <Label>Stock</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={variantForm.stock}
+                    onChange={(e) => setVariantForm((prev) => ({ ...prev, stock: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="pt-2">
+                {editingVariant && (
+                  <Button type="button" variant="outline" onClick={resetVariantForm}>
+                    Cancelar edición
+                  </Button>
+                )}
+                <Button type="button" onClick={handleSaveVariant} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  {editingVariant ? 'Guardar variante' : 'Agregar variante'}
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
     </div>
   );

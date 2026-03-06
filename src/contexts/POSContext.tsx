@@ -15,6 +15,7 @@ export interface Product {
   code: string;
   price: number;
   stock: number;
+  variants?: ProductVariant[];
   size?: string;
   color?: string;
   brand?: string;
@@ -25,12 +26,29 @@ export interface Product {
   gender?: string;
 }
 
+export interface ProductVariant {
+  id: string;
+  productId: string;
+  sku?: string;
+  size?: string;
+  color?: string;
+  price: number;
+  stock: number;
+  isDefault?: boolean;
+}
+
+export interface ProductLineItem {
+  product: Product;
+  variant?: ProductVariant;
+  quantity: number;
+}
+
 export type PaymentMethod = 'efectivo' | 'debito' | 'credito' | 'transferencia' | 'mercado_pago' | 'bna' | 'dni' | 'otro';
 
 export interface Sale {
   id: string;
   date: Date;
-  items: { product: Product; quantity: number }[];
+  items: ProductLineItem[];
   total: number;
   userId: string;
   customerAccountId?: string;
@@ -50,7 +68,7 @@ export type DebtStatus = 'pendiente' | 'deuda' | 'pagado' | 'cancelado';
 export interface Debt {
   id: string;
   date: Date;
-  items: { product: Product; quantity: number }[];
+  items: ProductLineItem[];
   amount: number;
   description: string;
   paidAmount: number;
@@ -86,6 +104,8 @@ interface POSContextType {
   authInitialized: boolean;
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  productVariants: ProductVariant[];
+  setProductVariants: React.Dispatch<React.SetStateAction<ProductVariant[]>>;
   sales: Sale[];
   setSales: React.Dispatch<React.SetStateAction<Sale[]>>;
   customerAccounts: CustomerAccount[];
@@ -95,6 +115,9 @@ interface POSContextType {
   addProduct: (product: Omit<Product, 'id'>) => void;
   updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => void;
+  addProductVariant: (productId: string, variant: Omit<ProductVariant, 'id' | 'productId'>) => Promise<void>;
+  updateProductVariant: (variantId: string, updates: Partial<Omit<ProductVariant, 'id' | 'productId'>>) => Promise<void>;
+  deleteProductVariant: (variantId: string) => Promise<void>;
   addSale: (sale: Omit<Sale, 'id'>) => void;
   addCustomerAccount: (account: Omit<CustomerAccount, 'id'>) => void;
   updateCustomerAccount: (id: string, account: Partial<CustomerAccount>) => void;
@@ -124,6 +147,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
   const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [customerAccounts, setCustomerAccounts] = useState<CustomerAccount[]>(initialCustomerAccounts);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
@@ -216,48 +240,89 @@ export function POSProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authInitialized) return;
 
-    const loadProducts = async () => {
-      const { data, error } = await supabase
+    const loadCatalog = async () => {
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
         .order('name');
 
-      if (error || !data) return;
+      if (productsError || !productsData) return;
 
-      setProducts(
-        data.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          code: p.code,
-          price: Number(p.price),
-          stock: p.stock ?? 0,
-          size: p.size ?? undefined,
-          color: p.color ?? undefined,
-          brand: p.brand ?? undefined,
-          model: p.model ?? undefined,
-          category: p.category ?? undefined,
-          material: p.material ?? undefined,
-          description: p.description ?? undefined,
-          gender: p.gender ?? undefined,
-        }))
-      );
+      const { data: variantsData, error: variantsError } = await supabase
+        .from('product_variants')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (variantsError || !variantsData) return;
+
+      const normalizedVariants: ProductVariant[] = variantsData.map((variant: any) => ({
+        id: variant.id,
+        productId: variant.product_id,
+        sku: variant.sku ?? undefined,
+        size: variant.size ?? undefined,
+        color: variant.color ?? undefined,
+        price: Number(variant.price),
+        stock: Number(variant.stock ?? 0),
+        isDefault: Boolean(variant.is_default),
+      }));
+
+      const variantsByProduct = normalizedVariants.reduce<Record<string, ProductVariant[]>>((acc, variant) => {
+        if (!acc[variant.productId]) acc[variant.productId] = [];
+        acc[variant.productId].push(variant);
+        return acc;
+      }, {});
+
+      const normalizedProducts: Product[] = productsData.map((product: any) => {
+        const variants = variantsByProduct[product.id] || [];
+        const defaultVariant = variants.find((v) => v.isDefault) || variants[0];
+        const totalStock = variants.length > 0
+          ? variants.reduce((sum, variant) => sum + variant.stock, 0)
+          : Number(product.stock ?? 0);
+
+        return {
+          id: product.id,
+          name: product.name,
+          code: product.code,
+          price: defaultVariant ? defaultVariant.price : Number(product.price),
+          stock: totalStock,
+          variants,
+          size: product.size ?? defaultVariant?.size ?? undefined,
+          color: product.color ?? defaultVariant?.color ?? undefined,
+          brand: product.brand ?? undefined,
+          model: product.model ?? undefined,
+          category: product.category ?? undefined,
+          material: product.material ?? undefined,
+          description: product.description ?? undefined,
+          gender: product.gender ?? undefined,
+        };
+      });
+
+      setProductVariants(normalizedVariants);
+      setProducts(normalizedProducts);
     };
 
-    void loadProducts();
+    void loadCatalog();
 
-    const productsChannel = supabase
-      .channel('products-changes')
+    const catalogChannel = supabase
+      .channel('products-and-variants-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'products' },
         () => {
-          void loadProducts();
+          void loadCatalog();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'product_variants' },
+        () => {
+          void loadCatalog();
         }
       )
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(productsChannel);
+      void supabase.removeChannel(catalogChannel);
     };
   }, [authInitialized, currentUser?.id]);
   // Load customer accounts from database
@@ -293,8 +358,15 @@ export function POSProvider({ children }: { children: ReactNode }) {
               .filter((item: any) => item.debt_id === debt.id)
               .map((item: any) => {
                 const product = products.find(p => p.id === item.product_id);
+                const variant = item.product_variant_id
+                  ? productVariants.find((v) => v.id === item.product_variant_id)
+                  : undefined;
+                const historicalProduct: Product = product
+                  ? { ...product, price: Number(item.unit_price) }
+                  : { id: item.product_id, name: 'Producto eliminado', code: '', price: Number(item.unit_price), stock: 0 };
                 return {
-                  product: product || { id: item.product_id, name: 'Producto eliminado', code: '', price: item.unit_price, stock: 0 },
+                  product: historicalProduct,
+                  variant,
                   quantity: item.quantity,
                 };
               });
@@ -350,7 +422,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
     if (products.length > 0 || authInitialized) {
       void loadCustomerAccounts();
     }
-  }, [products, authInitialized]);
+  }, [products, productVariants, authInitialized]);
 
   // Load sales from database
   useEffect(() => {
@@ -371,8 +443,15 @@ export function POSProvider({ children }: { children: ReactNode }) {
           .filter((item: any) => item.sale_id === sale.id)
           .map((item: any) => {
             const product = products.find(p => p.id === item.product_id);
+            const variant = item.product_variant_id
+              ? productVariants.find((v) => v.id === item.product_variant_id)
+              : undefined;
+            const historicalProduct: Product = product
+              ? { ...product, price: Number(item.unit_price) }
+              : { id: item.product_id, name: 'Producto eliminado', code: '', price: Number(item.unit_price), stock: 0 };
             return {
-              product: product || { id: item.product_id, name: 'Producto eliminado', code: '', price: item.unit_price, stock: 0 },
+              product: historicalProduct,
+              variant,
               quantity: item.quantity,
             };
           });
@@ -395,7 +474,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
     if (products.length > 0 || authInitialized) {
       void loadSales();
     }
-  }, [products, authInitialized]);
+  }, [products, productVariants, authInitialized]);
 
   // Load cash registers from database
   useEffect(() => {
@@ -423,6 +502,25 @@ export function POSProvider({ children }: { children: ReactNode }) {
   }, []);
 
 
+  const refreshProductFromVariants = (productId: string) => {
+    setProducts((prev) =>
+      prev.map((product) => {
+        if (product.id !== productId) return product;
+        const variants = productVariants.filter((variant) => variant.productId === productId);
+        if (variants.length === 0) return product;
+        const defaultVariant = variants.find((variant) => variant.isDefault) || variants[0];
+        return {
+          ...product,
+          variants,
+          price: defaultVariant?.price ?? product.price,
+          stock: variants.reduce((sum, variant) => sum + variant.stock, 0),
+          size: defaultVariant?.size ?? product.size,
+          color: defaultVariant?.color ?? product.color,
+        };
+      })
+    );
+  };
+
   const addProduct = (product: Omit<Product, 'id'>) => {
     supabase
       .from('products')
@@ -441,17 +539,45 @@ export function POSProvider({ children }: { children: ReactNode }) {
       })
       .select('*')
       .single()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (error || !data) return;
+
+        const { data: variantData } = await supabase
+          .from('product_variants')
+          .insert({
+            product_id: data.id,
+            sku: product.code || null,
+            size: product.size || null,
+            color: product.color || null,
+            price: product.price,
+            stock: product.stock,
+            is_default: true,
+          })
+          .select('*')
+          .single();
+
+        const defaultVariant: ProductVariant | undefined = variantData
+          ? {
+              id: variantData.id,
+              productId: variantData.product_id,
+              sku: variantData.sku ?? undefined,
+              size: variantData.size ?? undefined,
+              color: variantData.color ?? undefined,
+              price: Number(variantData.price),
+              stock: Number(variantData.stock ?? 0),
+              isDefault: Boolean(variantData.is_default),
+            }
+          : undefined;
 
         const newProduct: Product = {
           id: data.id,
           name: data.name,
           code: data.code,
-          price: Number(data.price),
-          stock: data.stock ?? 0,
-          size: data.size ?? undefined,
-          color: data.color ?? undefined,
+          price: defaultVariant?.price ?? Number(data.price),
+          stock: defaultVariant?.stock ?? Number(data.stock ?? 0),
+          variants: defaultVariant ? [defaultVariant] : [],
+          size: defaultVariant?.size ?? data.size ?? undefined,
+          color: defaultVariant?.color ?? data.color ?? undefined,
           brand: data.brand ?? undefined,
           model: data.model ?? undefined,
           category: data.category ?? undefined,
@@ -459,6 +585,9 @@ export function POSProvider({ children }: { children: ReactNode }) {
           gender: data.gender ?? undefined,
         };
 
+        if (defaultVariant) {
+          setProductVariants((prev) => [...prev, defaultVariant]);
+        }
         setProducts((prev) => [...prev, newProduct]);
       });
   };
@@ -507,6 +636,21 @@ export function POSProvider({ children }: { children: ReactNode }) {
           } : p
         ));
       }
+      return;
+    }
+
+    const defaultVariant = productVariants.find((variant) => variant.productId === id && variant.isDefault);
+    if (defaultVariant) {
+      const variantPayload: Record<string, unknown> = {};
+      if (product.price !== undefined) variantPayload.price = product.price;
+      if (product.stock !== undefined) variantPayload.stock = product.stock;
+      if (product.code !== undefined) variantPayload.sku = product.code;
+      if (product.size !== undefined) variantPayload.size = product.size || null;
+      if (product.color !== undefined) variantPayload.color = product.color || null;
+
+      if (Object.keys(variantPayload).length > 0) {
+        await supabase.from('product_variants').update(variantPayload).eq('id', defaultVariant.id);
+      }
     }
   };
 
@@ -524,8 +668,77 @@ export function POSProvider({ children }: { children: ReactNode }) {
   
     // 2. actualizar estado local recién después
     setProducts((prev) => prev.filter((p) => p.id !== id));
+    setProductVariants((prev) => prev.filter((variant) => variant.productId !== id));
   };
-  
+
+  const addProductVariant = async (
+    productId: string,
+    variant: Omit<ProductVariant, 'id' | 'productId'>
+  ) => {
+    const { data, error } = await supabase
+      .from('product_variants')
+      .insert({
+        product_id: productId,
+        sku: variant.sku || null,
+        size: variant.size || null,
+        color: variant.color || null,
+        price: variant.price,
+        stock: variant.stock,
+        is_default: variant.isDefault ?? false,
+      })
+      .select('*')
+      .single();
+
+    if (error || !data) return;
+
+    const newVariant: ProductVariant = {
+      id: data.id,
+      productId: data.product_id,
+      sku: data.sku ?? undefined,
+      size: data.size ?? undefined,
+      color: data.color ?? undefined,
+      price: Number(data.price),
+      stock: Number(data.stock ?? 0),
+      isDefault: Boolean(data.is_default),
+    };
+
+    setProductVariants((prev) => [...prev, newVariant]);
+    refreshProductFromVariants(productId);
+  };
+
+  const updateProductVariant = async (
+    variantId: string,
+    updates: Partial<Omit<ProductVariant, 'id' | 'productId'>>
+  ) => {
+    const payload: Record<string, unknown> = {};
+    if (updates.sku !== undefined) payload.sku = updates.sku || null;
+    if (updates.size !== undefined) payload.size = updates.size || null;
+    if (updates.color !== undefined) payload.color = updates.color || null;
+    if (updates.price !== undefined) payload.price = updates.price;
+    if (updates.stock !== undefined) payload.stock = updates.stock;
+    if (updates.isDefault !== undefined) payload.is_default = updates.isDefault;
+    if (Object.keys(payload).length === 0) return;
+
+    const { error } = await supabase.from('product_variants').update(payload).eq('id', variantId);
+    if (error) return;
+
+    setProductVariants((prev) =>
+      prev.map((variant) => (variant.id === variantId ? { ...variant, ...updates } : variant))
+    );
+
+    const currentVariant = productVariants.find((variant) => variant.id === variantId);
+    if (currentVariant) refreshProductFromVariants(currentVariant.productId);
+  };
+
+  const deleteProductVariant = async (variantId: string) => {
+    const currentVariant = productVariants.find((variant) => variant.id === variantId);
+    const { error } = await supabase.from('product_variants').delete().eq('id', variantId);
+    if (error) return;
+
+    setProductVariants((prev) => prev.filter((variant) => variant.id !== variantId));
+    if (currentVariant) refreshProductFromVariants(currentVariant.productId);
+  };
+
 
   const addSale = async (sale: Omit<Sale, 'id'>) => {
     // Insert sale to database
@@ -548,9 +761,10 @@ export function POSProvider({ children }: { children: ReactNode }) {
     if (sale.items.length > 0) {
       const saleItemsToInsert = sale.items.map(item => ({
         sale_id: saleData.id,
-        product_id: item.product.id,
+        product_id: item.variant?.productId || item.product.id,
+        product_variant_id: item.variant?.id || null,
         quantity: item.quantity,
-        unit_price: item.product.price,
+        unit_price: item.variant?.price ?? item.product.price,
       }));
 
       await supabase.from('sale_items').insert(saleItemsToInsert);
@@ -571,10 +785,17 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
     // Update stock for each item - wait for all updates to complete
     await Promise.all(
-      sale.items.map(async ({ product, quantity }) => {
+      sale.items.map(async ({ product, variant, quantity }) => {
+        if (variant?.id) {
+          const currentVariant = productVariants.find((v) => v.id === variant.id);
+          if (currentVariant) {
+            await updateProductVariant(variant.id, { stock: Math.max(0, currentVariant.stock - quantity) });
+          }
+          return;
+        }
         const currentProduct = products.find(p => p.id === product.id);
         if (currentProduct) {
-          await updateProduct(product.id, { stock: currentProduct.stock - quantity });
+          await updateProduct(product.id, { stock: Math.max(0, currentProduct.stock - quantity) });
         }
       })
     );
@@ -648,8 +869,15 @@ export function POSProvider({ children }: { children: ReactNode }) {
     // Update stock for pendiente or deuda (item is taken by customer)
     if (debt.status === 'pendiente' || debt.status === 'deuda') {
       await Promise.all(
-        debt.items.map(async ({ product, quantity }) => {
-          await updateProduct(product.id, { stock: product.stock - quantity });
+        debt.items.map(async ({ product, variant, quantity }) => {
+          if (variant?.id) {
+            const currentVariant = productVariants.find((v) => v.id === variant.id);
+            if (currentVariant) {
+              await updateProductVariant(variant.id, { stock: Math.max(0, currentVariant.stock - quantity) });
+            }
+            return;
+          }
+          await updateProduct(product.id, { stock: Math.max(0, product.stock - quantity) });
         })
       );
     }
@@ -674,9 +902,10 @@ export function POSProvider({ children }: { children: ReactNode }) {
     // Insert debt items
     const debtItemsToInsert = debt.items.map(item => ({
       debt_id: debtData.id,
-      product_id: item.product.id,
+      product_id: item.variant?.productId || item.product.id,
+      product_variant_id: item.variant?.id || null,
       quantity: item.quantity,
-      unit_price: item.product.price,
+      unit_price: item.variant?.price ?? item.product.price,
     }));
 
     await supabase.from('debt_items').insert(debtItemsToInsert);
@@ -821,7 +1050,14 @@ export function POSProvider({ children }: { children: ReactNode }) {
     // Handle stock changes based on status transitions
     if (newStatus === 'cancelado' && (oldStatus === 'pendiente' || oldStatus === 'deuda')) {
       await Promise.all(
-        debt.items.map(async ({ product, quantity }) => {
+        debt.items.map(async ({ product, variant, quantity }) => {
+          if (variant?.id) {
+            const currentVariant = productVariants.find((v) => v.id === variant.id);
+            if (currentVariant) {
+              await updateProductVariant(variant.id, { stock: currentVariant.stock + quantity });
+            }
+            return;
+          }
           const currentProduct = products.find(p => p.id === product.id);
           if (currentProduct) {
             await updateProduct(product.id, { stock: currentProduct.stock + quantity });
@@ -1122,6 +1358,8 @@ export function POSProvider({ children }: { children: ReactNode }) {
         authInitialized,
         products,
         setProducts,
+        productVariants,
+        setProductVariants,
         sales,
         setSales,
         customerAccounts,
@@ -1131,6 +1369,9 @@ export function POSProvider({ children }: { children: ReactNode }) {
         addProduct,
         updateProduct,
         deleteProduct,
+        addProductVariant,
+        updateProductVariant,
+        deleteProductVariant,
         addSale,
         addCustomerAccount,
         updateCustomerAccount,

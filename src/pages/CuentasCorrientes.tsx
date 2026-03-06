@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePOS, Product, PaymentMethod, DebtStatus } from '@/contexts/POSContext';
+import { usePOS, Product, ProductVariant, PaymentMethod, DebtStatus } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,6 +76,7 @@ import { exportCustomersToExcel, importCustomersFromExcel } from '@/lib/excel-ut
 
 interface CartItem {
   product: Product;
+  variant?: ProductVariant;
   quantity: number;
 }
 
@@ -184,6 +185,26 @@ export default function CuentasCorrientes() {
   );
 
   const selectedAccountData = customerAccounts.find((a) => a.id === selectedAccount);
+  const productOptions = products.flatMap((product) => {
+    const variants = product.variants || [];
+    if (variants.length === 0) return [{ product, variant: undefined as ProductVariant | undefined }];
+    return variants.map((variant) => ({ product, variant }));
+  });
+  const filteredProductOptions = productOptions.filter(({ product, variant }) => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      product.name.toLowerCase().includes(q) ||
+      product.code?.toLowerCase().includes(q) ||
+      product.color?.toLowerCase().includes(q) ||
+      product.material?.toLowerCase().includes(q) ||
+      (product.description || '').toLowerCase().includes(q) ||
+      (product.brand || '').toLowerCase().includes(q) ||
+      (variant?.sku || '').toLowerCase().includes(q) ||
+      (variant?.size || '').toLowerCase().includes(q) ||
+      (variant?.color || '').toLowerCase().includes(q)
+    );
+  });
 
   // Pagination logic
   const indexOfLastDebt = currentPage * debtsPerPage;
@@ -214,19 +235,21 @@ export default function CuentasCorrientes() {
     }
   };
 
-  const addToCart = (product: Product) => {
-    const existingItem = cart.find((item) => item.product.id === product.id);
+  const addToCart = (product: Product, variant?: ProductVariant) => {
+    const itemKey = variant?.id || product.id;
+    const availableStock = variant?.stock ?? product.stock;
+    const existingItem = cart.find((item) => (item.variant?.id || item.product.id) === itemKey);
     if (existingItem) {
-      if (existingItem.quantity < product.stock) {
+      if (existingItem.quantity < availableStock) {
         setCart(
           cart.map((item) =>
-            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+            (item.variant?.id || item.product.id) === itemKey ? { ...item, quantity: item.quantity + 1 } : item
           )
         );
       }
     } else {
-      if (product.stock > 0) {
-        setCart([...cart, { product, quantity: 1 }]);
+      if (availableStock > 0) {
+        setCart([...cart, { product, variant, quantity: 1 }]);
       }
     }
   };
@@ -235,10 +258,11 @@ export default function CuentasCorrientes() {
     setCart((prevCart) =>
       prevCart
         .map((item) => {
-          if (item.product.id === productId) {
+          if ((item.variant?.id || item.product.id) === productId) {
             const newQuantity = item.quantity + change;
             if (newQuantity <= 0) return null;
-            if (newQuantity > item.product.stock) return item;
+            const availableStock = item.variant?.stock ?? item.product.stock;
+            if (newQuantity > availableStock) return item;
             return { ...item, quantity: newQuantity };
           }
           return item;
@@ -248,11 +272,11 @@ export default function CuentasCorrientes() {
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(cart.filter((item) => item.product.id !== productId));
+    setCart(cart.filter((item) => (item.variant?.id || item.product.id) !== productId));
   };
 
   const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    return cart.reduce((sum, item) => sum + (item.variant?.price ?? item.product.price) * item.quantity, 0);
   };
 
   const getSignedAdjustment = (type: ManualAdjustmentType, percent: number, baseAmount: number) => {
@@ -494,47 +518,34 @@ export default function CuentasCorrientes() {
                       </div>
 
                       <div className="mt-3 space-y-2 max-h-96 overflow-y-auto border rounded-lg p-3">
-                        {products.filter((product) => {
-                          const q = productSearch.trim().toLowerCase();
-                          if (!q) return true;
-                          return (
-                            product.name.toLowerCase().includes(q) ||
-                            product.code?.toLowerCase().includes(q) ||
-                            product.color?.toLowerCase().includes(q) ||
-                            product.material?.toLowerCase().includes(q) ||
-                            (product.description || '').toLowerCase().includes(q) ||
-                            (product.brand || '').toLowerCase().includes(q)
-                          );
-                        }).map((product) => (
+                        {filteredProductOptions.map(({ product, variant }) => (
                           <button
-                            key={product.id}
-                            onClick={() => addToCart(product)}
-                            disabled={product.stock === 0}
+                            key={variant?.id || product.id}
+                            onClick={() => addToCart(product, variant)}
+                            disabled={(variant?.stock ?? product.stock) === 0}
                             className="w-full flex items-center justify-between rounded-lg border-2 border-border p-3 text-left transition-all hover:border-primary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm truncate">{product.name}</p>
-                              <p className="text-xs text-muted-foreground">{product.code}</p>
-                              <p className="text-sm font-bold text-primary mt-1">{formatCurrency(product.price)}</p>
+                              <p className="font-medium text-sm truncate">
+                                {product.name}
+                                {variant && (
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    ({variant.size || 'Sin talle'} / {variant.color || 'Sin color'})
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{variant?.sku || product.code}</p>
+                              <p className="text-sm font-bold text-primary mt-1">
+                                {formatCurrency(variant?.price ?? product.price)}
+                              </p>
                             </div>
-                            <Badge variant={product.stock < 10 ? 'destructive' : 'secondary'}>
-                              {product.stock}
+                            <Badge variant={(variant?.stock ?? product.stock) < 10 ? 'destructive' : 'secondary'}>
+                              {variant?.stock ?? product.stock}
                             </Badge>
                           </button>
                         ))}
 
-                        {products.filter((product) => {
-                          const q = productSearch.trim().toLowerCase();
-                          if (!q) return true;
-                          return (
-                            product.name.toLowerCase().includes(q) ||
-                            product.code?.toLowerCase().includes(q) ||
-                            product.color?.toLowerCase().includes(q) ||
-                            product.material?.toLowerCase().includes(q) ||
-                            (product.description || '').toLowerCase().includes(q) ||
-                            (product.brand || '').toLowerCase().includes(q)
-                          );
-                        }).length === 0 && (
+                        {filteredProductOptions.length === 0 && (
                           <p className="text-center text-muted-foreground py-6">No se encontraron productos</p>
                         )}
                       </div>
@@ -555,18 +566,27 @@ export default function CuentasCorrientes() {
                         <div className="space-y-2 mt-3">
                           {cart.map((item) => (
                             <div
-                              key={item.product.id}
+                              key={item.variant?.id || item.product.id}
                               className="flex items-center gap-2 rounded-lg border p-2 bg-background"
                             >
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-xs truncate">{item.product.name}</p>
-                                <p className="text-xs text-muted-foreground">${item.product.price}</p>
+                                <p className="font-medium text-xs truncate">
+                                  {item.product.name}
+                                  {item.variant && (
+                                    <span className="text-xs text-muted-foreground ml-1">
+                                      ({item.variant.size || 'Sin talle'} / {item.variant.color || 'Sin color'})
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatCurrency(item.variant?.price ?? item.product.price)}
+                                </p>
                               </div>
                               <div className="flex items-center gap-1">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => updateQuantity(item.product.id, -1)}
+                                  onClick={() => updateQuantity(item.variant?.id || item.product.id, -1)}
                                   className="h-6 w-6 p-0"
                                 >
                                   <Minus className="h-3 w-3" />
@@ -575,7 +595,7 @@ export default function CuentasCorrientes() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => updateQuantity(item.product.id, 1)}
+                                  onClick={() => updateQuantity(item.variant?.id || item.product.id, 1)}
                                   className="h-6 w-6 p-0"
                                 >
                                   <Plus className="h-3 w-3" />
@@ -583,7 +603,7 @@ export default function CuentasCorrientes() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => removeFromCart(item.product.id)}
+                                  onClick={() => removeFromCart(item.variant?.id || item.product.id)}
                                   className="h-6 w-6 p-0 text-destructive"
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -780,7 +800,9 @@ export default function CuentasCorrientes() {
                             </p>
                             {debt.items.map((item, idx) => (
                               <p key={idx} className="text-xs text-muted-foreground ml-4">
-                                • {item.product.name} x{item.quantity} - {formatCurrency(item.product.price * item.quantity)}
+                                • {item.product.name}
+                                {item.variant && ` (${item.variant.size || 'Sin talle'} / ${item.variant.color || 'Sin color'})`}
+                                {' '}x{item.quantity} - {formatCurrency(item.product.price * item.quantity)}
                               </p>
                             ))}
                             {(() => {

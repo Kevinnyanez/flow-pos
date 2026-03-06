@@ -138,6 +138,11 @@ export default function RegistroVentas() {
                               {sale.items.map((item, idx) => (
                                 <div key={idx} className="text-sm">
                                   {item.product.name}
+                                  {item.variant && (
+                                    <span className="text-muted-foreground ml-1">
+                                      ({item.variant.size || 'Sin talle'} / {item.variant.color || 'Sin color'})
+                                    </span>
+                                  )}
                                   <span className="text-muted-foreground ml-1">
                                     ({formatCurrency(item.product.price)})
                                   </span>

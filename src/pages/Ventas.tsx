@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePOS, Product } from '@/contexts/POSContext';
+import { usePOS, Product, ProductVariant } from '@/contexts/POSContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 
 interface CartItem {
   product: Product;
+  variant?: ProductVariant;
   quantity: number;
 }
 
@@ -25,21 +26,23 @@ export default function Ventas() {
   const [roundUp, setRoundUp] = useState<boolean>(false);
   const [roundDown, setRoundDown] = useState<boolean>(false);
 
-  const addToCart = (product: Product) => {
-    const existingItem = cart.find((item) => item.product.id === product.id);
+  const addToCart = (product: Product, variant?: ProductVariant) => {
+    const itemKey = variant?.id || product.id;
+    const availableStock = variant?.stock ?? product.stock;
+    const existingItem = cart.find((item) => (item.variant?.id || item.product.id) === itemKey);
     if (existingItem) {
-      if (existingItem.quantity < product.stock) {
+      if (existingItem.quantity < availableStock) {
         setCart(
           cart.map((item) =>
-            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+            (item.variant?.id || item.product.id) === itemKey ? { ...item, quantity: item.quantity + 1 } : item
           )
         );
       } else {
         toast.error('No hay suficiente stock');
       }
     } else {
-      if (product.stock > 0) {
-        setCart([...cart, { product, quantity: 1 }]);
+      if (availableStock > 0) {
+        setCart([...cart, { product, variant, quantity: 1 }]);
       } else {
         toast.error('Producto sin stock');
       }
@@ -50,10 +53,11 @@ export default function Ventas() {
     setCart((prevCart) =>
       prevCart
         .map((item) => {
-          if (item.product.id === productId) {
+            if ((item.variant?.id || item.product.id) === productId) {
             const newQuantity = item.quantity + change;
             if (newQuantity <= 0) return null;
-            if (newQuantity > item.product.stock) {
+            const availableStock = item.variant?.stock ?? item.product.stock;
+            if (newQuantity > availableStock) {
               toast.error('No hay suficiente stock');
               return item;
             }
@@ -66,11 +70,11 @@ export default function Ventas() {
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(cart.filter((item) => item.product.id !== productId));
+    setCart(cart.filter((item) => (item.variant?.id || item.product.id) !== productId));
   };
 
   const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    return cart.reduce((sum, item) => sum + (item.variant?.price ?? item.product.price) * item.quantity, 0);
   };
 
   const calculateTotal = () => {
@@ -92,19 +96,26 @@ export default function Ventas() {
   const [productPage, setProductPage] = useState(1);
   const productsPerPage = 20;
 
-const filteredProducts = products.filter((p) => {
+  const productOptions = products.flatMap((product) => {
+    const variants = product.variants || [];
+    if (variants.length === 0) return [{ product, variant: undefined as ProductVariant | undefined }];
+    return variants.map((variant) => ({ product, variant }));
+  });
+
+const filteredProducts = productOptions.filter(({ product, variant }) => {
   const term = searchTerm.toLowerCase();
   return (
-    p.name.toLowerCase().includes(term) ||
-    p.code?.toLowerCase().includes(term) ||
-    p.category?.toLowerCase().includes(term) ||
-    p.color?.toLowerCase().includes(term) ||
-    p.material?.toLowerCase().includes(term) ||
-    p.description?.toLowerCase().includes(term) ||
-    p.brand?.toLowerCase().includes(term) ||
-    p.model?.toLowerCase().includes(term) ||
-    p.size?.toLowerCase().includes(term) ||
-    p.gender?.toLowerCase().includes(term)
+    product.name.toLowerCase().includes(term) ||
+    product.code?.toLowerCase().includes(term) ||
+    product.category?.toLowerCase().includes(term) ||
+    product.material?.toLowerCase().includes(term) ||
+    product.description?.toLowerCase().includes(term) ||
+    product.brand?.toLowerCase().includes(term) ||
+    product.model?.toLowerCase().includes(term) ||
+    product.gender?.toLowerCase().includes(term) ||
+    variant?.size?.toLowerCase().includes(term) ||
+    variant?.color?.toLowerCase().includes(term) ||
+    variant?.sku?.toLowerCase().includes(term)
   );
 });
 
@@ -184,18 +195,29 @@ const filteredProducts = products.filter((p) => {
   </div>
               {paginatedProducts.map((product) => (
                 <button
-                  key={product.id}
-                  onClick={() => addToCart(product)}
-                  disabled={product.stock === 0}
+                  key={product.variant?.id || product.product.id}
+                  onClick={() => addToCart(product.product, product.variant)}
+                  disabled={(product.variant?.stock ?? product.product.stock) === 0}
                   className="flex items-center justify-between rounded-xl border-2 border-border p-4 text-left transition-all hover:border-primary hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border"
                 >
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">{product.name}</p>
-                    <p className="text-sm text-muted-foreground">{product.code}</p>
-                    <p className="text-lg font-bold text-primary mt-1">{formatCurrency(product.price)}</p>
+                    <p className="font-medium text-foreground">
+                      {product.product.name}
+                      {product.variant && (
+                        <span className="text-sm text-muted-foreground ml-2">
+                          ({product.variant.size || 'Sin talle'} / {product.variant.color || 'Sin color'})
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {product.variant?.sku || product.product.code}
+                    </p>
+                    <p className="text-lg font-bold text-primary mt-1">
+                      {formatCurrency(product.variant?.price ?? product.product.price)}
+                    </p>
                   </div>
-                  <Badge variant={product.stock < 10 ? 'destructive' : 'secondary'}>
-                    {product.stock}
+                  <Badge variant={(product.variant?.stock ?? product.product.stock) < 10 ? 'destructive' : 'secondary'}>
+                    {product.variant?.stock ?? product.product.stock}
                   </Badge>
                 </button>
               ))}
@@ -249,18 +271,27 @@ const filteredProducts = products.filter((p) => {
                   <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
                     {cart.map((item) => (
                       <div
-                        key={item.product.id}
+                        key={item.variant?.id || item.product.id}
                         className="flex items-center gap-3 rounded-lg border border-border p-3"
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{item.product.name}</p>
-                          <p className="text-sm text-muted-foreground">{formatCurrency(item.product.price)}</p>
+                          <p className="font-medium text-sm truncate">
+                            {item.product.name}
+                            {item.variant && (
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({item.variant.size || 'Sin talle'} / {item.variant.color || 'Sin color'})
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatCurrency(item.variant?.price ?? item.product.price)}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateQuantity(item.product.id, -1)}
+                            onClick={() => updateQuantity(item.variant?.id || item.product.id, -1)}
                             className="h-7 w-7 p-0 rounded-lg"
                           >
                             <Minus className="h-3 w-3" />
@@ -269,7 +300,7 @@ const filteredProducts = products.filter((p) => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateQuantity(item.product.id, 1)}
+                            onClick={() => updateQuantity(item.variant?.id || item.product.id, 1)}
                             className="h-7 w-7 p-0 rounded-lg"
                           >
                             <Plus className="h-3 w-3" />
@@ -277,7 +308,7 @@ const filteredProducts = products.filter((p) => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => removeFromCart(item.product.id)}
+                            onClick={() => removeFromCart(item.variant?.id || item.product.id)}
                             className="h-7 w-7 p-0 rounded-lg text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-3 w-3" />
